@@ -22,7 +22,7 @@ wellingtolabpub/
 │   ├── papers/                ← one note per publication (auto-generated)
 │   ├── people/                ← one note per author (auto-generated)
 │   ├── topics/                ← one note per OpenAlex concept (auto-generated)
-│   └── theses/                ← one note per thesis (planned)
+│   └── theses/                ← one note per dissertation OpenAlex returns (auto-generated)
 │
 ├── wellington_vault/          ← Python ingest package (stdlib-only)
 │   ├── openalex.py            ← OpenAlex client with on-disk cache
@@ -92,7 +92,7 @@ near-instant unless you pass `--refresh`.
 - **Per person:** every Wellington-lab paper they're on, their first/last co-publication year.
 - **Per topic:** every Wellington-lab paper tagged with that OpenAlex concept.
 
-Coverage caveat: OpenAlex covers ~95% of what shows on Google Scholar. Preprints, theses, and very recent items may lag. Theses ingestion (UBC cIRcle) is a planned follow-up.
+Coverage caveat: OpenAlex covers ~95% of what shows on Google Scholar. Preprints and very recent items may lag. Theses are populated automatically when OpenAlex returns `type: dissertation` for the lab's authorship graph; UBC cIRcle ingestion to enrich the official thesis record is a planned follow-up.
 
 ---
 

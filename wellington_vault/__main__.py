@@ -92,8 +92,8 @@ def main(argv: list[str] | None = None) -> int:
         stats = write_vault(works, indexes, pi_name, args.out, dry_run=args.dry_run)
         action = "Would write" if args.dry_run else "Wrote"
         print(
-            f"{action}: {stats['papers']} papers, {stats['people']} people, "
-            f"{stats['topics']} topics → {args.out}/",
+            f"{action}: {stats['papers']} papers, {stats['theses']} theses, "
+            f"{stats['people']} people, {stats['topics']} topics → {args.out}/",
             file=sys.stderr,
         )
         return 0

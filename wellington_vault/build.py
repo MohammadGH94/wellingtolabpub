@@ -84,10 +84,15 @@ def write_vault(
     stats = {"papers": 0, "people": 0, "topics": 0, "theses": 0}
 
     for w in works:
-        path = papers_dir / f"{notes.paper_filename(w)}.md"
-        content = notes.render_paper_note(w)
+        if notes.is_thesis(w):
+            path = theses_dir / f"{notes.thesis_filename(w)}.md"
+            content = notes.render_thesis_note(w)
+            stats["theses"] += 1
+        else:
+            path = papers_dir / f"{notes.paper_filename(w)}.md"
+            content = notes.render_paper_note(w)
+            stats["papers"] += 1
         _write(path, content, dry_run)
-        stats["papers"] += 1
 
     for name, papers in indexes["by_person"].items():
         is_pi = name.lower() == pi_name.lower()
