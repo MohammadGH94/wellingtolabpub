@@ -1,0 +1,18 @@
+# caches and build artifacts
+.cache/
+__pycache__/
+*.pyc
+*.pyo
+
+# virtualenvs
+.venv/
+venv/
+
+# secrets (skill research toolkit lives outside repo, but just in case)
+.env
+*.env.local
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/
