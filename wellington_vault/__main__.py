@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
 from . import __version__
-from .build import build_indexes, resolve_author, write_vault
+from .build import build_indexes, extract_trainee_candidates, resolve_author, write_vault
+from .circle import CircleClient, CircleError, to_lastname_first
 from .openalex import OpenAlexClient
 from .util import pluck
 
@@ -41,6 +43,19 @@ def main(argv: list[str] | None = None) -> int:
                        help="Print what would be written; don't touch disk.")
     build.add_argument("--limit", type=int, default=None,
                        help="Stop after N works (for testing).")
+    build.add_argument("--circle-api-key", default=None,
+                       help="UBC Open Collections API key for cIRcle thesis lookups. "
+                            "Falls back to the CIRCLE_API_KEY env var. If neither is "
+                            "set, cIRcle ingestion is skipped and only OpenAlex-typed "
+                            "dissertations (if any) are written to theses/.")
+    build.add_argument("--circle-cache", type=Path, default=Path(".cache/circle"),
+                       help="cIRcle response cache directory. (default: %(default)s)")
+    build.add_argument("--circle-hits-per-trainee", type=int, default=5,
+                       help="Max cIRcle hits to keep per trainee candidate. "
+                            "(default: %(default)s)")
+    build.add_argument("--circle-max-trainees", type=int, default=None,
+                       help="Cap the number of trainee candidates queried against "
+                            "cIRcle (most-frequent first). Default: no cap.")
 
     resolve = sub.add_parser("resolve", help="Resolve author and print top candidates only.")
     resolve.add_argument("--author-name", default="Cheryl Wellington")
@@ -89,7 +104,12 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         pi_name = author.get("display_name") or args.author_name
-        stats = write_vault(works, indexes, pi_name, args.out, dry_run=args.dry_run)
+        circle_theses = _fetch_circle_theses(args, works, pi_name)
+
+        stats = write_vault(
+            works, indexes, pi_name, args.out,
+            dry_run=args.dry_run, circle_theses=circle_theses,
+        )
         action = "Would write" if args.dry_run else "Wrote"
         print(
             f"{action}: {stats['papers']} papers, {stats['theses']} theses, "
@@ -99,6 +119,64 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     return 1
+
+
+def _fetch_circle_theses(
+    args: argparse.Namespace, works: list[dict], pi_name: str
+) -> list[dict]:
+    """Look up trainee theses on UBC cIRcle. Returns list of ES hits.
+
+    A trainee candidate is the first author of any paper where the PI is the
+    last author (canonical life-sciences authorship: PI last, lead trainee
+    first). We dedupe by `_id` across all queries and skip non-thesis hits
+    defensively (the Lucene `genre` filter should already exclude them).
+    """
+    api_key = args.circle_api_key or os.environ.get("CIRCLE_API_KEY") or ""
+    if not api_key:
+        print(
+            "(cIRcle ingestion skipped: no API key. Pass --circle-api-key or "
+            "set CIRCLE_API_KEY env var. Register at "
+            "https://open.library.ubc.ca/research)",
+            file=sys.stderr,
+        )
+        return []
+
+    candidates = extract_trainee_candidates(works, pi_name)
+    if args.circle_max_trainees:
+        candidates = candidates[: args.circle_max_trainees]
+    print(
+        f"cIRcle: {len(candidates)} trainee candidate(s) from co-author graph; "
+        f"querying...",
+        file=sys.stderr,
+    )
+
+    client = CircleClient(
+        api_key=api_key, cache_dir=args.circle_cache, refresh=args.refresh
+    )
+    seen_ids: set[str] = set()
+    out: list[dict] = []
+    for cand in candidates:
+        last_first = to_lastname_first(cand)
+        try:
+            hits = client.search_theses_by_creator(
+                last_first, size=args.circle_hits_per_trainee
+            )
+        except CircleError as e:
+            print(f"  cIRcle error for '{cand}': {e}", file=sys.stderr)
+            continue
+        for h in hits:
+            src = h.get("_source") or {}
+            genres = [(g or "").lower() for g in (src.get("genre") or [])]
+            if not any("thesis" in g or "dissertation" in g for g in genres):
+                continue
+            cid = h.get("_id") or ""
+            if cid and cid in seen_ids:
+                continue
+            if cid:
+                seen_ids.add(cid)
+            out.append(h)
+    print(f"cIRcle: {len(out)} unique theses retrieved.", file=sys.stderr)
+    return out
 
 
 def _format_author(a: dict) -> str:

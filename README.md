@@ -22,10 +22,11 @@ wellingtolabpub/
 │   ├── papers/                ← one note per publication (auto-generated)
 │   ├── people/                ← one note per author (auto-generated)
 │   ├── topics/                ← one note per OpenAlex concept (auto-generated)
-│   └── theses/                ← one note per dissertation OpenAlex returns (auto-generated)
+│   └── theses/                ← one note per UBC cIRcle thesis by a lab trainee (auto-generated)
 │
 ├── wellington_vault/          ← Python ingest package (stdlib-only)
 │   ├── openalex.py            ← OpenAlex client with on-disk cache
+│   ├── circle.py              ← UBC cIRcle (Open Collections) client
 │   ├── notes.py               ← AI-first markdown emitters
 │   ├── build.py               ← orchestration
 │   └── __main__.py            ← CLI entry point
@@ -47,6 +48,10 @@ python -m wellington_vault resolve
 # Full build — fetches every Wellington-lab paper, renders the vault
 python -m wellington_vault build --mailto you@example.com
 
+# Same, but also retrieve trainee theses from UBC cIRcle (recommended)
+$env:CIRCLE_API_KEY = "your-key"  # PowerShell — register at https://open.library.ubc.ca/research
+python -m wellington_vault build --mailto you@example.com
+
 # Preview without touching disk
 python -m wellington_vault build --dry-run
 
@@ -56,6 +61,12 @@ python -m wellington_vault build --refresh
 # If author name resolution misfires, pin the OpenAlex author ID directly
 python -m wellington_vault build --author-id A1234567890
 ```
+
+The cIRcle key is optional. Without it the build proceeds with OpenAlex only
+and the `theses/` folder will likely be empty (OpenAlex rarely indexes UBC
+graduate theses). With it, the build cross-references Wellington-paper
+co-authors against cIRcle's thesis collection by creator name and writes
+one note per match.
 
 The first build populates the cache at `.cache/openalex/`; subsequent runs are
 near-instant unless you pass `--refresh`.
@@ -92,7 +103,7 @@ near-instant unless you pass `--refresh`.
 - **Per person:** every Wellington-lab paper they're on, their first/last co-publication year.
 - **Per topic:** every Wellington-lab paper tagged with that OpenAlex concept.
 
-Coverage caveat: OpenAlex covers ~95% of what shows on Google Scholar. Preprints and very recent items may lag. Theses are populated automatically when OpenAlex returns `type: dissertation` for the lab's authorship graph; UBC cIRcle ingestion to enrich the official thesis record is a planned follow-up.
+Coverage caveat: OpenAlex covers ~95% of what shows on Google Scholar. Preprints and very recent items may lag. UBC graduate theses are sourced from **cIRcle** (Open Collections, `oc-index.library.ubc.ca`) by cross-referencing each paper's first author against cIRcle's `creator` field — no Supervisor field is exposed in the public index, so Wellington's role as supervisor is *inferred* from the co-author relationship and should be verified against the thesis acknowledgments before external citation.
 
 ---
 

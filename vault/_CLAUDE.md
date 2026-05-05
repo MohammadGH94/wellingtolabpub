@@ -27,9 +27,9 @@ Full spec: `.claude/skills/obsidian-second-brain/references/ai-first-rules.md` (
 
 - **Subject:** Dr. Cheryl Wellington's lab — University of British Columbia
 - **Lab website:** https://wellingtonlabubc.wordpress.com/
-- **Primary purpose:** Brain-map of every publication and (eventually) thesis from the lab, plus the co-author network and topic graph that emerges from them
+- **Primary purpose:** Brain-map of every publication and thesis from the lab, plus the co-author network and topic graph that emerges from them
 - **Built by:** `python -m wellington_vault build` (source: `wellington_vault/`)
-- **Data provenance:** OpenAlex (https://openalex.org) for publications; UBC cIRcle (planned) for theses
+- **Data provenance:** OpenAlex (https://openalex.org) for publications; UBC cIRcle / Open Collections (https://oc-index.library.ubc.ca) for trainee theses
 
 ---
 
@@ -103,6 +103,37 @@ ai-first: true
 confidence: stated
 ```
 
+### `type: thesis` (cIRcle-sourced)
+```yaml
+date: YYYY-MM-DD
+type: thesis
+tags: [thesis, wellington-lab, year-YYYY]
+title: "..."
+year: YYYY
+candidate: "Forename Surname"
+authors: ["[[Forename Surname]]"]
+degree: "Doctor of Philosophy - PhD" | "Master of Science - MSc" | ...
+program: "..."                       # e.g. "Pathology and Laboratory Medicine"
+affiliations: ["...", "..."]
+campus: "UBCV" | "UBCO"
+scholarly_level: "Graduate"
+institution: "University of British Columbia"
+circle_id: "1.0XXXXXX"
+circle_url: "https://open.library.ubc.ca/collections/ubctheses/items/1.0XXXXXX"
+topics: ["[[Subject1]]", ...]        # cIRcle subject headings (may dangle)
+ai-first: true
+confidence: stated
+source: ubc-circle
+```
+
+**Supervisor inference (important).** cIRcle's structured Supervisor field
+is not exposed in the public Open Collections index, so theses are surfaced
+by intersecting the lab's OpenAlex co-author graph with cIRcle's `creator`
+field. A thesis present here means *the candidate co-authored at least one
+paper where Wellington is the last (PI) author* — supervisor identity is
+inferred, not stated. When asked who supervised X, hedge accordingly and
+suggest checking the thesis acknowledgments.
+
 ---
 
 ## Key Facts (always-loaded context)
@@ -150,7 +181,10 @@ python -m wellington_vault resolve
 # Full build (uses cache from prior runs)
 python -m wellington_vault build
 
-# Force re-fetch from OpenAlex
+# Build including cIRcle thesis ingestion (set CIRCLE_API_KEY first)
+python -m wellington_vault build --circle-api-key <key>
+
+# Force re-fetch from both OpenAlex and cIRcle
 python -m wellington_vault build --refresh
 
 # Preview without touching disk
