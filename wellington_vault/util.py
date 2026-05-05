@@ -21,6 +21,20 @@ def slugify(text: str, max_len: int = 80) -> str:
     return text or "untitled"
 
 
+def normalize_name(s: str) -> str:
+    """Lowercase, strip diacritics, drop periods, collapse whitespace.
+
+    Used to compare display-name variants for the same person across sources
+    (OpenAlex returns "Cheryl Wellington" and "Cheryl L. Wellington" on
+    different papers; cIRcle uses "Wellington, Cheryl L."). Applying this
+    function to all variants gives a single comparable key per person.
+    """
+    s = unicodedata.normalize("NFKD", s or "")
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = s.lower().replace(".", "")
+    return re.sub(r"\s+", " ", s).strip()
+
+
 def reconstruct_abstract(inverted_index: dict[str, list[int]] | None) -> str:
     """OpenAlex stores abstracts as {token: [positions]} (Elsevier compliance).
 

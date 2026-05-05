@@ -8,7 +8,13 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .build import build_indexes, extract_trainee_candidates, resolve_author, write_vault
+from .build import (
+    build_indexes,
+    canonicalize_authorships,
+    extract_trainee_candidates,
+    resolve_author,
+    write_vault,
+)
 from .circle import CircleClient, CircleError, to_lastname_first
 from .openalex import OpenAlexClient
 from .util import pluck
@@ -107,19 +113,27 @@ def main(argv: list[str] | None = None) -> int:
                 break
         print(f"Fetched {len(works)} works.", file=sys.stderr)
 
+        # Collapse author display-name variants ("Cheryl Wellington" /
+        # "Cheryl L. Wellington") to one canonical name per OpenAlex author ID
+        # before indexing — otherwise variants fragment into duplicate person
+        # notes and break the co-author graph.
+        canonical_names = canonicalize_authorships(works)
+        pi_id = (author.get("id") or "").rstrip("/").rsplit("/", 1)[-1] or None
+
         indexes = build_indexes(works)
         print(
-            f"Indexed: {len(indexes['by_person'])} unique authors, "
-            f"{len(indexes['by_topic'])} unique topics.",
+            f"Indexed: {len(indexes['by_person'])} unique authors "
+            f"(by OpenAlex ID), {len(indexes['by_topic'])} unique topics.",
             file=sys.stderr,
         )
 
         pi_name = author.get("display_name") or args.author_name
-        circle_theses = _fetch_circle_theses(args, works, pi_name)
+        circle_theses = _fetch_circle_theses(args, works, pi_name, pi_id=pi_id)
 
         stats = write_vault(
             works, indexes, pi_name, args.out,
             dry_run=args.dry_run, circle_theses=circle_theses,
+            pi_id=pi_id, canonical_names=canonical_names,
         )
         action = "Would write" if args.dry_run else "Wrote"
         print(
@@ -163,7 +177,10 @@ def _accept_thesis_hit(
 
 
 def _fetch_circle_theses(
-    args: argparse.Namespace, works: list[dict], pi_name: str
+    args: argparse.Namespace,
+    works: list[dict],
+    pi_name: str,
+    pi_id: str | None = None,
 ) -> list[dict]:
     """Look up trainee theses on UBC cIRcle via three complementary legs.
 
@@ -200,7 +217,7 @@ def _fetch_circle_theses(
     out: list[dict] = []
 
     # Leg 1 — co-authorship
-    auto_candidates = extract_trainee_candidates(works, pi_name)
+    auto_candidates = extract_trainee_candidates(works, pi_name, pi_id=pi_id)
     if args.circle_max_trainees:
         auto_candidates = auto_candidates[: args.circle_max_trainees]
 

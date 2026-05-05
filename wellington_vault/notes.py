@@ -80,7 +80,44 @@ def topic_filename(concept_display_name: str) -> str:
 # ── Renderers ───────────────────────────────────────────────────────────────
 
 
-def render_paper_note(work: dict) -> str:
+def _author_id(authorship: dict) -> str:
+    """Extract bare OpenAlex author ID ("A12345") from an authorship dict."""
+    raw = pluck(authorship, "author", "id", default="") or ""
+    return raw.rstrip("/").rsplit("/", 1)[-1]
+
+
+def _wellington_role(authorships: list[dict], pi_id: str | None) -> tuple[bool, str]:
+    """Determine PI presence and role on a paper. Prefers exact OpenAlex
+    author-ID matching; falls back to substring match on display names.
+
+    The substring fallback is unreliable when display names include middle
+    initials ("Cheryl L. Wellington" does not contain "Cheryl Wellington")
+    so callers should always pass `pi_id` when one is known.
+    """
+    author_names = [
+        pluck(a, "author", "display_name", default="") or "" for a in authorships
+    ]
+    if pi_id:
+        author_ids = [_author_id(a) for a in authorships]
+        pi_present = pi_id in author_ids
+        if not pi_present:
+            return False, "unknown"
+        if author_ids[0] == pi_id:
+            return True, "first-author"
+        if author_ids[-1] == pi_id:
+            return True, "last-author"
+        return True, "co-author"
+    pi_present = any(PI_NAME.lower() in (n or "").lower() for n in author_names)
+    if not pi_present:
+        return False, "unknown"
+    if author_names and PI_NAME.lower() in author_names[0].lower():
+        return True, "first-author"
+    if author_names and PI_NAME.lower() in author_names[-1].lower():
+        return True, "last-author"
+    return True, "co-author"
+
+
+def render_paper_note(work: dict, pi_id: str | None = None) -> str:
     title = pluck(work, "title", default="Untitled") or "Untitled"
     year = pluck(work, "publication_year", default=None)
     pub_date = pluck(work, "publication_date", default="")
@@ -116,15 +153,7 @@ def render_paper_note(work: dict) -> str:
         if c.get("display_name")
     ]
 
-    pi_present = any(
-        PI_NAME.lower() in (n or "").lower() for n in author_names
-    )
-    role = (
-        "first-author" if author_names and PI_NAME.lower() in author_names[0].lower()
-        else "last-author" if author_names and PI_NAME.lower() in author_names[-1].lower()
-        else "co-author" if pi_present
-        else "unknown"
-    )
+    pi_present, role = _wellington_role(authorships, pi_id)
 
     fm: dict[str, Any] = {
         "date": today_iso(),
@@ -204,7 +233,7 @@ def render_paper_note(work: dict) -> str:
     return frontmatter(fm) + "\n".join(body_lines).rstrip() + "\n"
 
 
-def render_thesis_note(work: dict) -> str:
+def render_thesis_note(work: dict, pi_id: str | None = None) -> str:
     title = pluck(work, "title", default="Untitled") or "Untitled"
     year = pluck(work, "publication_year", default=None)
     pub_date = pluck(work, "publication_date", default="")
@@ -239,9 +268,7 @@ def render_thesis_note(work: dict) -> str:
     ]
 
     candidate = author_names[0] if author_names else ""
-    pi_present = any(
-        PI_NAME.lower() in (n or "").lower() for n in author_names
-    )
+    pi_present, _ = _wellington_role(authorships, pi_id)
 
     fm: dict[str, Any] = {
         "date": today_iso(),
@@ -326,15 +353,33 @@ def render_thesis_note(work: dict) -> str:
     return frontmatter(fm) + "\n".join(body_lines).rstrip() + "\n"
 
 
-def render_circle_thesis_note(hit: dict) -> str:
+def render_circle_thesis_note(
+    hit: dict, canonical_names: dict[str, str] | None = None
+) -> str:
     """Render a thesis note from a UBC Open Collections (cIRcle) ES hit.
 
     `hit` is the full ES envelope: `{"_id": ..., "_index": ..., "_source": {...}}`.
     The OC index uses lowercased Solr-style field names (`creator`, `title`,
     `description`, `genre`, `degree`, `program`, `affiliation`, `subject`,
     `campus`, `scholarlyLevel`, `ubc_date_sort`).
+
+    `canonical_names`, if supplied, maps display-name variants (and their
+    normalized forms) to the canonical OpenAlex name. Used to ensure the
+    candidate's wikilink points at the same person note that paper notes
+    link to (so cIRcle "Cooper, Jennifer G." resolves to the canonical
+    OpenAlex "Jennifer G. Cooper").
     """
     from .circle import from_lastname_first
+    from .util import normalize_name
+
+    def _resolve(raw_name: str) -> str:
+        if not canonical_names or not raw_name:
+            return raw_name
+        return (
+            canonical_names.get(raw_name)
+            or canonical_names.get(normalize_name(raw_name))
+            or raw_name
+        )
 
     src = hit.get("_source") or {}
     oc_id = hit.get("_id") or ""
@@ -342,7 +387,7 @@ def render_circle_thesis_note(hit: dict) -> str:
     title = (src.get("title") or ["Untitled"])[0] or "Untitled"
     creators = [c for c in (src.get("creator") or []) if c]
     candidate_lf = creators[0] if creators else ""
-    candidate = from_lastname_first(candidate_lf)
+    candidate = _resolve(from_lastname_first(candidate_lf))
     abstract = (src.get("description") or [""])[0] or ""
     degrees = [d for d in (src.get("degree") or []) if d]
     programs = [p for p in (src.get("program") or []) if p]
@@ -357,11 +402,12 @@ def render_circle_thesis_note(hit: dict) -> str:
         if oc_id else ""
     )
 
-    # Wikilinks to person notes use OpenAlex display-name format ("Forename
-    # Surname") so they resolve to notes generated from the OpenAlex co-author
-    # graph; cIRcle's "Surname, Forename" is converted first.
+    # Wikilinks to person notes use the OpenAlex canonical name when known
+    # so the link resolves to the same note paper authors are linked under.
     creator_links = [
-        wikilink(person_filename(from_lastname_first(c)), from_lastname_first(c))
+        (
+            lambda n: wikilink(person_filename(n), n)
+        )(_resolve(from_lastname_first(c)))
         for c in creators
     ]
     subject_links = [
