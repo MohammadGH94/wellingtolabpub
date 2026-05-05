@@ -113,6 +113,25 @@ class CircleClient:
         hits_block = ((data.get("data") or {}).get("hits") or {}).get("hits") or []
         return [h for h in hits_block if isinstance(h, dict)]
 
+    def search_theses_mentioning(
+        self, phrase: str, size: int = 50
+    ) -> list[dict]:
+        """Return thesis hits whose indexed text mentions `phrase` (phrase-matched).
+
+        Used for catching trainees who never co-authored a paper but acknowledge
+        the PI by full name in the thesis abstract/metadata. cIRcle does not
+        expose its structured Supervisor field for querying; this is the
+        complementary signal.
+        """
+        if not phrase:
+            return []
+        # Wrap in quotes for a Lucene phrase match — keeps "Cheryl Wellington"
+        # together so it doesn't match "C. Wellington Seam" via free OR.
+        q = f'"{phrase}" AND genre:"Thesis/Dissertation"'
+        data = self._get({"q": q, "size": size})
+        hits_block = ((data.get("data") or {}).get("hits") or {}).get("hits") or []
+        return [h for h in hits_block if isinstance(h, dict)]
+
 
 # ── Name format helpers ────────────────────────────────────────────────────
 

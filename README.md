@@ -103,7 +103,7 @@ near-instant unless you pass `--refresh`.
 - **Per person:** every Wellington-lab paper they're on, their first/last co-publication year.
 - **Per topic:** every Wellington-lab paper tagged with that OpenAlex concept.
 
-Coverage caveat: OpenAlex covers ~95% of what shows on Google Scholar. Preprints and very recent items may lag. UBC graduate theses are sourced from **cIRcle** (Open Collections, `oc-index.library.ubc.ca`) by cross-referencing each paper's first author against cIRcle's `creator` field — no Supervisor field is exposed in the public index, so Wellington's role as supervisor is *inferred* from the co-author relationship and should be verified against the thesis acknowledgments before external citation.
+Coverage caveat: OpenAlex covers ~95% of what shows on Google Scholar. Preprints and very recent items may lag. UBC graduate theses are sourced from **cIRcle** (Open Collections, `oc-index.library.ubc.ca`) via three legs unioned by record ID: (1) creator-name match for first-authors of Wellington-last-author papers, (2) phrase match of the PI's full name across the index, and (3) manual seeding via `--trainees-file`. cIRcle does not expose its Supervisor field for queries, so a thesis here only means there is a structural link to the lab — Wellington's role as supervisor is inferred and should be verified against the thesis acknowledgments before external citation. Trainees who never co-authored, never named the PI in their abstract, and aren't in the trainees file will not be captured.
 
 ---
 

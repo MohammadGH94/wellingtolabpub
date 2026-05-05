@@ -128,11 +128,22 @@ source: ubc-circle
 
 **Supervisor inference (important).** cIRcle's structured Supervisor field
 is not exposed in the public Open Collections index, so theses are surfaced
-by intersecting the lab's OpenAlex co-author graph with cIRcle's `creator`
-field. A thesis present here means *the candidate co-authored at least one
-paper where Wellington is the last (PI) author* — supervisor identity is
-inferred, not stated. When asked who supervised X, hedge accordingly and
-suggest checking the thesis acknowledgments.
+via three complementary legs and unioned by `_id`:
+
+1. **Co-authorship match** — first-author of a paper where Wellington is last
+   author. Catches trainees who published from their thesis work.
+2. **PI mention** — phrase match `"Cheryl Wellington"` across the index. Catches
+   trainees who never co-authored but acknowledge the PI by name in the
+   thesis abstract/metadata.
+3. **Manual seed** — names from `--trainees-file`, used when 1 and 2 miss
+   somebody (e.g., MSc trainees with topic-only abstracts and no publications).
+
+This is best-effort coverage, not exhaustive. **Theses are absent from this
+vault if the candidate (a) never co-authored a paper with Wellington AND
+(b) never named her in their abstract AND (c) is not in the trainees file.**
+When asked who supervised X, hedge: a thesis present here only means there
+is a structural link to the lab — verify supervisor identity by reading the
+thesis acknowledgments before citing externally.
 
 ---
 
