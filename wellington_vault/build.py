@@ -41,6 +41,34 @@ def resolve_author(
     return candidates[0]
 
 
+def extract_trainee_candidates(works: list[dict], pi_name: str) -> list[str]:
+    """Return display names that look like Wellington-lab trainees.
+
+    Heuristic: the first author of any paper where `pi_name` is the last
+    author. In life-sciences convention the last author is the PI and the
+    first author is the lead trainee (postdoc/PhD/MSc) for that work.
+
+    Returned in descending frequency order so trainee names that appear on
+    multiple lab papers are searched first when downstream callers cap the
+    number of cIRcle queries.
+    """
+    pi_lower = pi_name.lower()
+    counts: dict[str, int] = {}
+    for w in works:
+        authorships = pluck(w, "authorships", default=[]) or []
+        names = [pluck(a, "author", "display_name", default="") for a in authorships]
+        names = [n for n in names if n]
+        if len(names) < 2:
+            continue
+        if pi_lower not in names[-1].lower():
+            continue
+        first = names[0]
+        if pi_lower in first.lower():
+            continue
+        counts[first] = counts.get(first, 0) + 1
+    return sorted(counts.keys(), key=lambda n: counts[n], reverse=True)
+
+
 def build_indexes(works: list[dict]) -> dict[str, Any]:
     by_person: dict[str, list[dict]] = defaultdict(list)
     by_topic: dict[str, dict[str, Any]] = {}
@@ -71,6 +99,7 @@ def write_vault(
     pi_name: str,
     out_dir: Path,
     dry_run: bool = False,
+    circle_theses: list[dict] | None = None,
 ) -> dict[str, int]:
     papers_dir = out_dir / "papers"
     people_dir = out_dir / "people"
@@ -93,6 +122,14 @@ def write_vault(
             content = notes.render_paper_note(w)
             stats["papers"] += 1
         _write(path, content, dry_run)
+
+    # cIRcle theses are written after OpenAlex dissertations so the cIRcle
+    # record (the authoritative thesis source) wins on filename collision.
+    for hit in circle_theses or []:
+        path = theses_dir / f"{notes.circle_thesis_filename(hit)}.md"
+        content = notes.render_circle_thesis_note(hit)
+        _write(path, content, dry_run)
+        stats["theses"] += 1
 
     for name, papers in indexes["by_person"].items():
         is_pi = name.lower() == pi_name.lower()

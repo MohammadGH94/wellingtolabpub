@@ -14,6 +14,7 @@ Every note follows the 7 rules from
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .util import frontmatter, pluck, reconstruct_abstract, slugify, today_iso, wikilink
@@ -44,6 +45,28 @@ def thesis_filename(work: dict) -> str:
     year = pluck(work, "publication_year", default="n.d.")
     title = pluck(work, "title", default="Untitled") or "Untitled"
     return f"{year} — {slugify(title, max_len=90)}"
+
+
+def circle_thesis_filename(hit: dict) -> str:
+    src = hit.get("_source") or {}
+    title = (src.get("title") or ["Untitled"])[0] or "Untitled"
+    year = circle_year(src) or "n.d."
+    return f"{year} — {slugify(title, max_len=90)}"
+
+
+def circle_year(src: dict) -> int | None:
+    """Best-effort year extraction from a cIRcle _source.
+
+    Prefers `ubc_date_sort` (e.g. '1993-12-31 AD') over `dateAvailable`
+    (the date the record entered Open Collections, often years later).
+    """
+    for raw in (src.get("ubc_date_sort"), src.get("dateAvailable")):
+        if not raw:
+            continue
+        m = re.match(r"(\d{4})", str(raw))
+        if m:
+            return int(m.group(1))
+    return None
 
 
 def person_filename(author_display_name: str) -> str:
@@ -298,6 +321,126 @@ def render_thesis_note(work: dict) -> str:
             score = c.get("score")
             score_str = f" (score: {score:.2f})" if isinstance(score, (int, float)) else ""
             body_lines.append(f"- {link}{score_str}")
+        body_lines.append("")
+
+    return frontmatter(fm) + "\n".join(body_lines).rstrip() + "\n"
+
+
+def render_circle_thesis_note(hit: dict) -> str:
+    """Render a thesis note from a UBC Open Collections (cIRcle) ES hit.
+
+    `hit` is the full ES envelope: `{"_id": ..., "_index": ..., "_source": {...}}`.
+    The OC index uses lowercased Solr-style field names (`creator`, `title`,
+    `description`, `genre`, `degree`, `program`, `affiliation`, `subject`,
+    `campus`, `scholarlyLevel`, `ubc_date_sort`).
+    """
+    from .circle import from_lastname_first
+
+    src = hit.get("_source") or {}
+    oc_id = hit.get("_id") or ""
+
+    title = (src.get("title") or ["Untitled"])[0] or "Untitled"
+    creators = [c for c in (src.get("creator") or []) if c]
+    candidate_lf = creators[0] if creators else ""
+    candidate = from_lastname_first(candidate_lf)
+    abstract = (src.get("description") or [""])[0] or ""
+    degrees = [d for d in (src.get("degree") or []) if d]
+    programs = [p for p in (src.get("program") or []) if p]
+    affiliations = [a for a in (src.get("affiliation") or []) if a]
+    subjects = [s for s in (src.get("subject") or []) if s]
+    campus = (src.get("campus") or [""])[0] or ""
+    scholarly = (src.get("scholarlyLevel") or [""])[0] or ""
+    year = circle_year(src)
+
+    handle_url = (
+        f"https://open.library.ubc.ca/collections/ubctheses/items/{oc_id}"
+        if oc_id else ""
+    )
+
+    # Wikilinks to person notes use OpenAlex display-name format ("Forename
+    # Surname") so they resolve to notes generated from the OpenAlex co-author
+    # graph; cIRcle's "Surname, Forename" is converted first.
+    creator_links = [
+        wikilink(person_filename(from_lastname_first(c)), from_lastname_first(c))
+        for c in creators
+    ]
+    subject_links = [
+        wikilink(topic_filename(s), s) for s in subjects
+    ]
+
+    fm: dict[str, Any] = {
+        "date": today_iso(),
+        "type": "thesis",
+        "tags": ["thesis", "wellington-lab", f"year-{year}" if year else "year-unknown"],
+        "title": title,
+        "year": year,
+        "candidate": candidate,
+        "authors": creator_links,
+        "degree": degrees[0] if degrees else "",
+        "program": programs[0] if programs else "",
+        "affiliations": affiliations,
+        "campus": campus,
+        "scholarly_level": scholarly,
+        "institution": "University of British Columbia",
+        "circle_id": oc_id,
+        "circle_url": handle_url,
+        "topics": subject_links,
+        "ai-first": True,
+        "confidence": "stated",
+        "source": "ubc-circle",
+    }
+
+    program_str = programs[0] if programs else "an unspecified program"
+    degree_str = degrees[0] if degrees else "graduate"
+    candidate_link = (
+        wikilink(person_filename(candidate), candidate) if candidate else "an unknown candidate"
+    )
+
+    body_lines = [
+        "",
+        "## For future Claude",
+        (
+            f"This is a thesis note for \"{title}\" ({year or 'n.d.'}), a UBC "
+            f"{degree_str} thesis by {candidate_link} in {program_str}. Surfaced by "
+            f"matching the candidate against the Wellington-lab co-authorship graph "
+            f"(OpenAlex), then retrieved from UBC cIRcle (open.library.ubc.ca). "
+            f"cIRcle's structured Supervisor field is not exposed in the public "
+            f"index, so for any thesis Wellington's role as supervisor is INFERRED "
+            f"from the co-author relationship — verify by reading the thesis's "
+            f"acknowledgments before citing externally. Metadata as of {today_iso()}."
+        ),
+        "",
+        "## Citation",
+    ]
+    if candidate:
+        body_lines.append(f"- Candidate: {candidate_link}")
+    if year:
+        body_lines.append(f"- Year: {year}")
+    if degrees:
+        body_lines.append(f"- Degree: {degrees[0]}")
+    if programs:
+        body_lines.append(f"- Program: {programs[0]}")
+    if affiliations:
+        body_lines.append(f"- Affiliation(s): {'; '.join(affiliations)}")
+    if campus:
+        body_lines.append(f"- Campus: {campus}")
+    body_lines.append("- Institution: University of British Columbia")
+    if oc_id:
+        body_lines.append(f"- cIRcle ID: {oc_id}")
+    if handle_url:
+        body_lines.append(f"- URL: {handle_url}")
+    body_lines.append(f"- Source: open.library.ubc.ca (as of {today_iso()})")
+    body_lines.append("")
+
+    if abstract:
+        body_lines.append("## Abstract")
+        body_lines.append(abstract)
+        body_lines.append("")
+
+    if subject_links:
+        body_lines.append("## Subjects (cIRcle)")
+        for link in subject_links:
+            body_lines.append(f"- {link}")
         body_lines.append("")
 
     return frontmatter(fm) + "\n".join(body_lines).rstrip() + "\n"

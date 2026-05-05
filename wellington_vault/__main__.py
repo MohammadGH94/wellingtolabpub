@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
 from . import __version__
-from .build import build_indexes, resolve_author, write_vault
+from .build import build_indexes, extract_trainee_candidates, resolve_author, write_vault
+from .circle import CircleClient, CircleError, to_lastname_first
 from .openalex import OpenAlexClient
 from .util import pluck
 
@@ -41,6 +43,30 @@ def main(argv: list[str] | None = None) -> int:
                        help="Print what would be written; don't touch disk.")
     build.add_argument("--limit", type=int, default=None,
                        help="Stop after N works (for testing).")
+    build.add_argument("--circle-api-key", default=None,
+                       help="UBC Open Collections API key for cIRcle thesis lookups. "
+                            "Falls back to the CIRCLE_API_KEY env var. If neither is "
+                            "set, cIRcle ingestion is skipped and only OpenAlex-typed "
+                            "dissertations (if any) are written to theses/.")
+    build.add_argument("--circle-cache", type=Path, default=Path(".cache/circle"),
+                       help="cIRcle response cache directory. (default: %(default)s)")
+    build.add_argument("--circle-hits-per-trainee", type=int, default=5,
+                       help="Max cIRcle hits to keep per trainee candidate. "
+                            "(default: %(default)s)")
+    build.add_argument("--circle-max-trainees", type=int, default=None,
+                       help="Cap the number of trainee candidates queried against "
+                            "cIRcle (most-frequent first). Default: no cap.")
+    build.add_argument("--circle-pi-mention-size", type=int, default=50,
+                       help="Max thesis hits to keep from the PI-name phrase-match "
+                            "leg (catches non-publishing trainees who acknowledge "
+                            "the PI). (default: %(default)s)")
+    build.add_argument("--trainees-file", type=Path, default=None,
+                       help="Optional path to a UTF-8 text file listing known "
+                            "trainee names (one per line, '#' for comments) in "
+                            "OpenAlex 'Forename Surname' format. Each name is "
+                            "queried against cIRcle alongside the auto-derived "
+                            "candidates — use this for trainees who never "
+                            "co-authored a paper.")
 
     resolve = sub.add_parser("resolve", help="Resolve author and print top candidates only.")
     resolve.add_argument("--author-name", default="Cheryl Wellington")
@@ -89,7 +115,12 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         pi_name = author.get("display_name") or args.author_name
-        stats = write_vault(works, indexes, pi_name, args.out, dry_run=args.dry_run)
+        circle_theses = _fetch_circle_theses(args, works, pi_name)
+
+        stats = write_vault(
+            works, indexes, pi_name, args.out,
+            dry_run=args.dry_run, circle_theses=circle_theses,
+        )
         action = "Would write" if args.dry_run else "Wrote"
         print(
             f"{action}: {stats['papers']} papers, {stats['theses']} theses, "
@@ -99,6 +130,139 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     return 1
+
+
+def _load_trainees_file(path: Path) -> list[str]:
+    """Parse a trainees file: one name per line, blank lines and `#` comments ignored."""
+    if not path.exists():
+        print(f"  trainees-file not found: {path}", file=sys.stderr)
+        return []
+    names: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        names.append(line)
+    return names
+
+
+def _accept_thesis_hit(
+    hit: dict, seen_ids: set[str], out: list[dict]
+) -> None:
+    """Defensively confirm the hit is a thesis, dedupe by _id, and append."""
+    src = hit.get("_source") or {}
+    genres = [(g or "").lower() for g in (src.get("genre") or [])]
+    if not any("thesis" in g or "dissertation" in g for g in genres):
+        return
+    cid = hit.get("_id") or ""
+    if cid and cid in seen_ids:
+        return
+    if cid:
+        seen_ids.add(cid)
+    out.append(hit)
+
+
+def _fetch_circle_theses(
+    args: argparse.Namespace, works: list[dict], pi_name: str
+) -> list[dict]:
+    """Look up trainee theses on UBC cIRcle via three complementary legs.
+
+    cIRcle does not expose its structured Supervisor field for querying, so
+    no single signal catches every Wellington-supervised thesis. We union:
+
+      1. **Co-authorship** — for each first-author of a paper where the PI is
+         the last author, query `creator:"Surname, Forename"`. Catches
+         trainees who published.
+      2. **PI mention** — phrase-match the PI's full name across the index.
+         Catches trainees who acknowledged the PI by name in the abstract
+         (some defenders never publish but mention their supervisor).
+      3. **Manual seed** — names from `--trainees-file` (one per line). The
+         user-curated escape hatch for trainees missed by 1 and 2.
+
+    Hits are deduplicated by `_id` and defensively re-checked for the
+    `Thesis/Dissertation` genre (the Lucene filter on each query should
+    already enforce this; defense in depth).
+    """
+    api_key = args.circle_api_key or os.environ.get("CIRCLE_API_KEY") or ""
+    if not api_key:
+        print(
+            "(cIRcle ingestion skipped: no API key. Pass --circle-api-key or "
+            "set CIRCLE_API_KEY env var. Register at "
+            "https://open.library.ubc.ca/research)",
+            file=sys.stderr,
+        )
+        return []
+
+    client = CircleClient(
+        api_key=api_key, cache_dir=args.circle_cache, refresh=args.refresh
+    )
+    seen_ids: set[str] = set()
+    out: list[dict] = []
+
+    # Leg 1 — co-authorship
+    auto_candidates = extract_trainee_candidates(works, pi_name)
+    if args.circle_max_trainees:
+        auto_candidates = auto_candidates[: args.circle_max_trainees]
+
+    # Leg 3 — manual seed (merged with auto, deduped, prepended so user-supplied
+    # names are queried first when --circle-max-trainees is in play)
+    manual_names: list[str] = []
+    if args.trainees_file:
+        manual_names = _load_trainees_file(args.trainees_file)
+        print(f"  trainees-file: {len(manual_names)} name(s)", file=sys.stderr)
+
+    seen_names: set[str] = set()
+    candidates: list[str] = []
+    for n in (*manual_names, *auto_candidates):
+        key = n.lower()
+        if key in seen_names:
+            continue
+        seen_names.add(key)
+        candidates.append(n)
+
+    print(
+        f"cIRcle leg 1+3 (creator search): {len(candidates)} unique trainee "
+        f"name(s) ({len(manual_names)} manual + {len(auto_candidates)} from "
+        f"co-author graph); querying...",
+        file=sys.stderr,
+    )
+    for cand in candidates:
+        last_first = to_lastname_first(cand)
+        try:
+            hits = client.search_theses_by_creator(
+                last_first, size=args.circle_hits_per_trainee
+            )
+        except CircleError as e:
+            print(f"  cIRcle error for '{cand}': {e}", file=sys.stderr)
+            continue
+        for h in hits:
+            _accept_thesis_hit(h, seen_ids, out)
+
+    creator_leg_count = len(out)
+
+    # Leg 2 — PI mention (phrase match)
+    print(
+        f"cIRcle leg 2 (PI-name phrase match): "
+        f"querying \"{pi_name}\"...",
+        file=sys.stderr,
+    )
+    try:
+        mention_hits = client.search_theses_mentioning(
+            pi_name, size=args.circle_pi_mention_size
+        )
+    except CircleError as e:
+        print(f"  cIRcle PI-mention error: {e}", file=sys.stderr)
+        mention_hits = []
+    for h in mention_hits:
+        _accept_thesis_hit(h, seen_ids, out)
+
+    print(
+        f"cIRcle: {len(out)} unique theses retrieved "
+        f"({creator_leg_count} from creator search + "
+        f"{len(out) - creator_leg_count} new from PI-name match).",
+        file=sys.stderr,
+    )
+    return out
 
 
 def _format_author(a: dict) -> str:

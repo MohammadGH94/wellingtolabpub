@@ -77,9 +77,16 @@ def _yaml_string(s: str) -> str:
     """Quote a string for YAML if it contains anything risky."""
     if s == "":
         return '""'
-    if re.search(r'[:#\[\]\{\},&\*\!\|\>\'"%@`\n]', s) or s.strip() != s or s.lower() in {
-        "yes", "no", "true", "false", "null", "~",
-    } or s[0] in "-?":
+    needs_quote = (
+        bool(re.search(r'[:#\[\]\{\},&\*\!\|\>\'"%@`\n]', s))
+        or s.strip() != s
+        or s.lower() in {"yes", "no", "true", "false", "null", "~"}
+        or s[0] in "-?"
+        # Force-quote anything that parses as a YAML number — keeps string
+        # identifiers like "1.0052902" (cIRcle IDs) from being read as floats.
+        or bool(re.fullmatch(r"-?\d+(\.\d+)?([eE][+-]?\d+)?", s))
+    )
+    if needs_quote:
         escaped = s.replace("\\", "\\\\").replace('"', '\\"')
         return f'"{escaped}"'
     return s
