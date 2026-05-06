@@ -132,18 +132,22 @@ via three complementary legs and unioned by `_id`:
 
 1. **Co-authorship match** — first-author of a paper where Wellington is last
    author. Catches trainees who published from their thesis work.
-2. **PI mention** — phrase match `"Cheryl Wellington"` across the index. Catches
-   trainees who never co-authored but acknowledge the PI by name in the
-   thesis abstract/metadata.
-3. **Manual seed** — names from `--trainees-file`, used when 1 and 2 miss
-   somebody (e.g., MSc trainees with topic-only abstracts and no publications).
+2. **PI mention (filtered)** — phrase match `"Cheryl Wellington"` across the
+   index, then keep only hits whose creator is a Wellington co-author in
+   OpenAlex. Catches middle-author co-authors that leg 1 misses (leg 1 is
+   restricted to first-author-of-PI-last-author papers). The co-author
+   filter is required: the unfiltered phrase match also surfaces theses
+   where Wellington is named only as an examining-committee member, which
+   are *not* her supervised theses.
+3. **Manual seed** — names from `--trainees-file`, the user-curated escape
+   hatch for trainees who never co-authored a paper with Wellington (so
+   they're invisible to legs 1 and 2).
 
 This is best-effort coverage, not exhaustive. **Theses are absent from this
-vault if the candidate (a) never co-authored a paper with Wellington AND
-(b) never named her in their abstract AND (c) is not in the trainees file.**
-When asked who supervised X, hedge: a thesis present here only means there
-is a structural link to the lab — verify supervisor identity by reading the
-thesis acknowledgments before citing externally.
+vault if the candidate never co-authored a paper with Wellington AND is not
+in the trainees file.** When asked who supervised X, hedge: a thesis present
+here only means there is a structural link to the lab — verify supervisor
+identity by reading the thesis acknowledgments before citing externally.
 
 ---
 
