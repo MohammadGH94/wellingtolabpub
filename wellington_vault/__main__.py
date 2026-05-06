@@ -8,10 +8,16 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .build import build_indexes, extract_trainee_candidates, resolve_author, write_vault
-from .circle import CircleClient, CircleError, to_lastname_first
+from .build import (
+    build_indexes,
+    canonicalize_authorships,
+    extract_trainee_candidates,
+    resolve_author,
+    write_vault,
+)
+from .circle import CircleClient, CircleError, from_lastname_first, to_lastname_first
 from .openalex import OpenAlexClient
-from .util import pluck
+from .util import normalize_name, pluck
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -57,9 +63,11 @@ def main(argv: list[str] | None = None) -> int:
                        help="Cap the number of trainee candidates queried against "
                             "cIRcle (most-frequent first). Default: no cap.")
     build.add_argument("--circle-pi-mention-size", type=int, default=50,
-                       help="Max thesis hits to keep from the PI-name phrase-match "
-                            "leg (catches non-publishing trainees who acknowledge "
-                            "the PI). (default: %(default)s)")
+                       help="Max thesis hits to fetch from the PI-name phrase-match "
+                            "leg (filtered to creators in the Wellington OpenAlex "
+                            "co-author graph; the raw query is noisy because it "
+                            "also matches examining-committee acknowledgments). "
+                            "(default: %(default)s)")
     build.add_argument("--trainees-file", type=Path, default=None,
                        help="Optional path to a UTF-8 text file listing known "
                             "trainee names (one per line, '#' for comments) in "
@@ -107,19 +115,27 @@ def main(argv: list[str] | None = None) -> int:
                 break
         print(f"Fetched {len(works)} works.", file=sys.stderr)
 
+        # Collapse author display-name variants ("Cheryl Wellington" /
+        # "Cheryl L. Wellington") to one canonical name per OpenAlex author ID
+        # before indexing — otherwise variants fragment into duplicate person
+        # notes and break the co-author graph.
+        canonical_names = canonicalize_authorships(works)
+        pi_id = (author.get("id") or "").rstrip("/").rsplit("/", 1)[-1] or None
+
         indexes = build_indexes(works)
         print(
-            f"Indexed: {len(indexes['by_person'])} unique authors, "
-            f"{len(indexes['by_topic'])} unique topics.",
+            f"Indexed: {len(indexes['by_person'])} unique authors "
+            f"(by OpenAlex ID), {len(indexes['by_topic'])} unique topics.",
             file=sys.stderr,
         )
 
         pi_name = author.get("display_name") or args.author_name
-        circle_theses = _fetch_circle_theses(args, works, pi_name)
+        circle_theses = _fetch_circle_theses(args, works, pi_name, pi_id=pi_id)
 
         stats = write_vault(
             works, indexes, pi_name, args.out,
             dry_run=args.dry_run, circle_theses=circle_theses,
+            pi_id=pi_id, canonical_names=canonical_names,
         )
         action = "Would write" if args.dry_run else "Wrote"
         print(
@@ -162,8 +178,41 @@ def _accept_thesis_hit(
     out.append(hit)
 
 
+def _coauthor_name_keys(works: list[dict]) -> set[str]:
+    """Set of normalized author display names across all OpenAlex works.
+
+    Used to filter cIRcle PI-mention hits to people Wellington has actually
+    published with. The PI-mention leg is otherwise noisy: cIRcle's phrase
+    match fires on examining-committee acknowledgments, surfacing theses
+    whose author has no real Wellington connection.
+    """
+    keys: set[str] = set()
+    for w in works:
+        for a in pluck(w, "authorships", default=[]) or []:
+            name = pluck(a, "author", "display_name", default="") or ""
+            if name:
+                keys.add(normalize_name(name))
+    return keys
+
+
+def _hit_creator_is_coauthor(hit: dict, coauthor_keys: set[str]) -> bool:
+    """True if the hit's first creator (cIRcle "Surname, Forename") matches a
+    known Wellington co-author by normalized name."""
+    src = hit.get("_source") or {}
+    creators = src.get("creator") or []
+    if not creators:
+        return False
+    first = creators[0] if isinstance(creators[0], str) else ""
+    if not first:
+        return False
+    return normalize_name(from_lastname_first(first)) in coauthor_keys
+
+
 def _fetch_circle_theses(
-    args: argparse.Namespace, works: list[dict], pi_name: str
+    args: argparse.Namespace,
+    works: list[dict],
+    pi_name: str,
+    pi_id: str | None = None,
 ) -> list[dict]:
     """Look up trainee theses on UBC cIRcle via three complementary legs.
 
@@ -173,11 +222,16 @@ def _fetch_circle_theses(
       1. **Co-authorship** — for each first-author of a paper where the PI is
          the last author, query `creator:"Surname, Forename"`. Catches
          trainees who published.
-      2. **PI mention** — phrase-match the PI's full name across the index.
-         Catches trainees who acknowledged the PI by name in the abstract
-         (some defenders never publish but mention their supervisor).
+      2. **PI mention** — phrase-match the PI's full name across the index,
+         then require the thesis creator to be a Wellington co-author from
+         OpenAlex. Catches middle-author co-authors that leg 1 misses (leg 1
+         is restricted to first-author-of-PI-last-author papers). The
+         co-author filter is critical: cIRcle's phrase match also fires on
+         theses where the PI is named only in the examining-committee
+         acknowledgments, which are *not* Wellington-supervised theses.
       3. **Manual seed** — names from `--trainees-file` (one per line). The
-         user-curated escape hatch for trainees missed by 1 and 2.
+         user-curated escape hatch for trainees who never co-authored a paper
+         (so they're invisible to legs 1 and 2).
 
     Hits are deduplicated by `_id` and defensively re-checked for the
     `Thesis/Dissertation` genre (the Lucene filter on each query should
@@ -200,7 +254,7 @@ def _fetch_circle_theses(
     out: list[dict] = []
 
     # Leg 1 — co-authorship
-    auto_candidates = extract_trainee_candidates(works, pi_name)
+    auto_candidates = extract_trainee_candidates(works, pi_name, pi_id=pi_id)
     if args.circle_max_trainees:
         auto_candidates = auto_candidates[: args.circle_max_trainees]
 
@@ -240,10 +294,13 @@ def _fetch_circle_theses(
 
     creator_leg_count = len(out)
 
-    # Leg 2 — PI mention (phrase match)
+    # Leg 2 — PI mention (phrase match), filtered to Wellington co-authors.
+    # Without the co-author filter, this leg false-positives on theses where
+    # the PI is acknowledged only as an examining-committee member.
+    coauthor_keys = _coauthor_name_keys(works)
     print(
-        f"cIRcle leg 2 (PI-name phrase match): "
-        f"querying \"{pi_name}\"...",
+        f"cIRcle leg 2 (PI-name phrase match, filtered to known co-authors): "
+        f"querying \"{pi_name}\" against {len(coauthor_keys)} co-authors...",
         file=sys.stderr,
     )
     try:
@@ -253,8 +310,17 @@ def _fetch_circle_theses(
     except CircleError as e:
         print(f"  cIRcle PI-mention error: {e}", file=sys.stderr)
         mention_hits = []
+    rejected = 0
     for h in mention_hits:
+        if not _hit_creator_is_coauthor(h, coauthor_keys):
+            rejected += 1
+            continue
         _accept_thesis_hit(h, seen_ids, out)
+    print(
+        f"  PI-mention hits: {len(mention_hits)} fetched, "
+        f"{rejected} rejected (creator not a Wellington co-author).",
+        file=sys.stderr,
+    )
 
     print(
         f"cIRcle: {len(out)} unique theses retrieved "
