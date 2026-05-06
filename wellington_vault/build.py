@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -184,6 +185,8 @@ def write_vault(
 
     if not dry_run:
         for d in (papers_dir, people_dir, topics_dir, theses_dir):
+            if d.exists():
+                shutil.rmtree(d)
             d.mkdir(parents=True, exist_ok=True)
 
     stats = {"papers": 0, "people": 0, "topics": 0, "theses": 0}
