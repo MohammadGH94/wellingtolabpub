@@ -5,6 +5,9 @@ description = "Build an Obsidian second-brain vault from Dr. Cheryl Wellington's
 requires-python = ">=3.10"
 dependencies = []
 
+[project.optional-dependencies]
+wordcloud = ["wordcloud>=1.9"]
+
 [project.scripts]
 wellington-vault = "wellington_vault.__main__:main"
 

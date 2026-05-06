@@ -117,6 +117,16 @@ The vault is **fully derived** from OpenAlex. Re-run the build any time:
 
 Each run overwrites `papers/`, `people/`, `topics/`, `theses/`, `index.md` and appends a line to `log.md`. Hand-edits to those files are lost — keep human notes in a separate folder.
 
+### Optional: word cloud
+
+`build` also writes `vault/wordcloud.png` (a word cloud of every paper + thesis abstract) when the third-party `wordcloud` package is installed:
+
+```
+pip install wordcloud
+```
+
+Without it, the build prints an install hint and continues. Pass `--no-wordcloud` to skip the render even when the package is available.
+
 ---
 
 ## Source

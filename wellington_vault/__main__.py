@@ -18,6 +18,7 @@ from .build import (
 from .circle import CircleClient, CircleError, from_lastname_first, to_lastname_first
 from .openalex import OpenAlexClient
 from .util import normalize_name, pluck
+from .wordcloud_gen import collect_abstracts, render_wordcloud
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -75,6 +76,11 @@ def main(argv: list[str] | None = None) -> int:
                             "queried against cIRcle alongside the auto-derived "
                             "candidates — use this for trainees who never "
                             "co-authored a paper.")
+    build.add_argument("--no-wordcloud", action="store_true",
+                       help="Skip the abstracts → vault/wordcloud.png render at "
+                            "end of build. Requires the optional `wordcloud` "
+                            "package (pip install wordcloud); without it the "
+                            "step is skipped automatically.")
 
     resolve = sub.add_parser("resolve", help="Resolve author and print top candidates only.")
     resolve.add_argument("--author-name", default="Cheryl Wellington")
@@ -143,6 +149,18 @@ def main(argv: list[str] | None = None) -> int:
             f"{stats['people']} people, {stats['topics']} topics → {args.out}/",
             file=sys.stderr,
         )
+
+        if not args.dry_run and not args.no_wordcloud:
+            wc_path = args.out / "wordcloud.png"
+            text = collect_abstracts(works, circle_theses)
+            if render_wordcloud(text, wc_path):
+                print(f"Wrote word cloud → {wc_path}", file=sys.stderr)
+            else:
+                print(
+                    "(word cloud skipped: install with `pip install wordcloud` "
+                    "to auto-generate vault/wordcloud.png on the next build)",
+                    file=sys.stderr,
+                )
         return 0
 
     return 1
