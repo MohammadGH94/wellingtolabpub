@@ -1,0 +1,215 @@
+{
+  "main": {
+    "id": "9501c08c538f957e",
+    "type": "split",
+    "children": [
+      {
+        "id": "1beb5b5682ba30ec",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "5f81ed8a831aae23",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "people/Mypinder S. Sekhon.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Mypinder S. Sekhon"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "307b36c031572a99",
+    "type": "split",
+    "children": [
+      {
+        "id": "67ad1817d0e6e406",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "a125a68f3e41b442",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "80a2810705895651",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "2219781e92bca864",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "97b3dc4793a77102",
+    "type": "split",
+    "children": [
+      {
+        "id": "2d4f015029dbbc8c",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "294dd3859513cec5",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "people/Mypinder S. Sekhon.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for Mypinder S. Sekhon"
+            }
+          },
+          {
+            "id": "a4e2d4f1807fd39d",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "people/Mypinder S. Sekhon.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from Mypinder S. Sekhon"
+            }
+          },
+          {
+            "id": "5a43dae6f53b196a",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "dfe7df8bb6c7ce80",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "daf12a3ea6d3efe3",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "people/Mypinder S. Sekhon.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of Mypinder S. Sekhon"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "5f81ed8a831aae23",
+  "lastOpenFiles": [
+    "papers/2025 — Memory and metamemory performance in individuals with and without post-COVID-19.md",
+    "papers/2024 — Advancements in APOE and dementia research Highlights from the 2023 AAIC Advancements.md",
+    "topics/Amyloid β.md",
+    "topics/Amyotrophic lateral sclerosis.md",
+    "topics/Gliosis.md",
+    "papers/2024 — International Initiative for Harmonization of Plasma Neurofilament light chain NfL.md",
+    "people/Ian R. Mackenzie.md",
+    "people/Human Rezaei.md",
+    "people/Megan I Harper.md",
+    "topics/Disease.md",
+    "people/Henrik Zetterberg.md",
+    "papers/2025 — Ambroxol as a Treatment for Parkinson Disease Dementia.md",
+    "papers/2025 — Prognostic value of plasma biomarkers for informing clinical trial design in.md",
+    "papers/2025 — Advocates, Academics, Survivors and Clinicians to END Intimate Partner Violence.md",
+    "people/Cheryl L. Wellington.md",
+    "papers/2020 — The Association of Inflammatory Cytokines in the Pulmonary Pathophysiology of Respiratory.md",
+    "people/Jennifer G. Cooper.md",
+    "people/Jennifer G Cooper.md",
+    "people/Jennifer Cooper.md",
+    "people/Тетяна Полякова.md",
+    "people/Mohammad Ghodsi.md",
+    "papers/2019 — Additional file 6 of CHIMERA repetitive mild traumatic brain injury induces chronic.md",
+    "Untitled.canvas",
+    "_CLAUDE.md",
+    "papers/2024 — Intimate Partner Violence-Related Brain Injury Unmasking and Addressing the Gaps.md",
+    "papers/2025 — Use of lecanemab and donanemab in the Canadian healthcare system Evidence, challenges.md"
+  ]
+}

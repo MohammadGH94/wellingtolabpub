@@ -1,0 +1,23 @@
+---
+date: 2026-05-05
+type: person
+tags:
+  - person
+  - wellington-lab
+name: Cornelia Laule
+role: co-author
+papers_with_wellington_lab: 4
+first_co_pub_year: 2021
+last_co_pub_year: 2025
+ai-first: true
+confidence: stated
+---
+
+## For future Claude
+Person note for Cornelia Laule, co-author with [[Cheryl Wellington]] on 4 OpenAlex-indexed papers. Co-publication span: 2021–2025. Built from openalex.org co-authorship metadata (as of 2026-05-05). Affiliations and current role NOT captured here — re-derive from OpenAlex `/authors` if needed.
+
+## Co-authored papers
+- [[2025 — From good to great The journey of sustained academic improvement of a university|From good to great: The journey of sustained academic improvement of a university department of pathology and laboratory medicine]] — 2025 · Academic Pathology
+- [[2023 — Diffusely abnormal white matter microstructural changes are similar across the clinical|Diffusely abnormal white matter microstructural changes are similar across the clinical phenotypes of multiple sclerosis]] — 2023 · Proceedings on CD-ROM - International Society for Magnetic Resonance in Medicine. Scientific Meeting and Exhibition/Proceedings of the International Society for Magnetic Resonance in Medicine, Scientific Meeting and Exhibition
+- [[2021 — Serum neurofilament light chain correlates with myelin and axonal magnetic resonance|Serum neurofilament light chain correlates with myelin and axonal magnetic resonance imaging markers in multiple sclerosis]] — 2021 · Multiple Sclerosis and Related Disorders
+- [[2021 — Diffusely abnormal white matter in clinically isolated syndrome is associated with|Diffusely abnormal white matter in clinically isolated syndrome is associated with parenchymal loss and elevated neurofilament levels]] — 2021 · Multiple Sclerosis and Related Disorders
