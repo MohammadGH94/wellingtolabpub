@@ -1,0 +1,6 @@
+# When this folder is deployed as a static site, only the built page is needed.
+# The generator, its template, and the working notes stay out of the deployment.
+_template.html
+build_human.py
+notes/
+*.md

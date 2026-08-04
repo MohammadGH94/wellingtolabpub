@@ -58,6 +58,64 @@ generated output and your edits to it will be overwritten.
 
 ---
 
+## Publishing it
+
+`index.html` is one static file with no external requests, so any static host will serve it. There
+is nothing to build and no server-side anything.
+
+### Vercel (free Hobby tier)
+
+The one setting that matters is **Root Directory** — point it at `human` and Vercel serves
+`index.html` at `/` with no config file.
+
+1. Go to [vercel.com/new](https://vercel.com/new) and import this GitHub repository.
+2. **Framework Preset:** Other.
+3. **Root Directory:** `human` ← the important one.
+4. Leave Build Command and Output Directory empty. There is no build step.
+5. Deploy.
+
+You get a `*.vercel.app` URL immediately, and every later push that changes `human/index.html`
+redeploys automatically. `.vercelignore` in this folder keeps the deployment to the built page.
+
+Or from the command line:
+
+```bash
+npm i -g vercel
+cd human
+vercel          # preview URL
+vercel --prod   # production URL
+```
+
+The Hobby tier is free and this page sits far inside its limits — a single ~500 KB file, no
+functions, no bandwidth to speak of. Note that Hobby is licensed for non-commercial use; an
+academic lab page qualifies.
+
+### Alternatives
+
+**Cloudflare Pages** and **Netlify** work identically — import the repo, set the root/publish
+directory to `human`, no build command.
+
+**GitHub Pages** is the awkward one here: it can only serve from a branch root or `/docs`, not from
+an arbitrary folder, so publishing `human/` needs either a small Actions workflow or moving the
+file. Vercel is genuinely less work for this layout.
+
+### Two things to keep in mind
+
+**It is a snapshot, and it will go stale.** The deployed page only changes when a rebuilt
+`index.html` is committed. Make it part of the refresh:
+
+```bash
+python -m wellington_vault build && python human/build_human.py
+git commit -am "Refresh vault and browser" && git push
+```
+
+**It is public.** Everything on the page is already-published scholarly metadata from OpenAlex and
+UBC cIRcle, but a deployment does put 1,667 named co-authors and a citation snapshot on an
+open URL. Citation counts in particular are frozen at build time, so date the page or refresh it on
+a schedule if people are going to cite what they see.
+
+---
+
 ## Two things to know about the data
 
 **Citation counts are a snapshot.** They were true at vault-build time and drift upward
