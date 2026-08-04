@@ -5,9 +5,9 @@ Every one of the 1,667 person notes was walked and clustered by surname + given-
 Counts shown are `papers_with_wellington_lab` from each note's frontmatter, followed by the note's co-publication year span.
 
 **Summary:** 49 near-certain merge clusters (99 notes → 49 people, removing 50 spurious entries),
-2 clusters resolved by manually reading the papers (`Chan`, `Martens` — worth 4 more merges),
-26 probable pairs needing a human call, and 43 same-surname pairs that are probably genuinely
-different people, listed so the sweep is auditable.
+plus a set of adjudicated cases resolved either by the lab owner or by reading the underlying
+papers. Five pairs remain open. The rest are listed by tier so the sweep is auditable: 26 probable
+pairs and 43 same-surname pairs that are probably genuinely different people.
 
 
 ---
@@ -70,39 +70,61 @@ One name is a strict extension or abbreviation of the other: a middle name/initi
 
 ---
 
-## Manually verified — the two messiest clusters
+## Adjudicated cases
 
-The name rules alone could not settle these two, so the underlying paper lists were read. Both
-turn out to be resolvable, and the answers do **not** match what the name rules predicted.
+Where the name rules were inconclusive, the underlying paper lists were read. Rows marked
+**[lab-confirmed]** were decided by the repository owner and override the evidence reading.
 
-### `Chan` — 4 notes, 21 papers, all one person
+### Settled by the lab owner
 
-| Note | Papers | Years | Research line |
-|---|---|---|---|
-| `Jeniffer Chan` | 15 | 2004–2014 | LCAT / ABCA1 / apoE / APP-PS1, mostly *J. Lipid Research* |
-| `Jennifer Chan` | 3 | 2008–2011 | ABCA1-independent apoE recycling, LCAT in astrocytes, GW3965 |
-| `Jennifer Y. Chan` | 2 | 2005–2007 | transgenic ABCA1 and amyloid burden |
-| `Jennifer A. Chan` | 1 | 2008 | GW3965 in APP/PS1 with and without ABCA1 |
+| Cluster | Decision |
+|---|---|
+| `Jeniffer Chan` (15p) + `Jennifer Chan` (3p) + `Jennifer Y. Chan` (2p) | **One person — merge.** `Jeniffer` is a misspelling; the `Y.` initial is metadata noise. **[lab-confirmed]** |
+| `Jennifer A. Chan` (1p, 2008) | **Separate person — keep.** Despite sitting on the same GW3965/APP-PS1 abstract, the `A.` initial is a real distinct researcher. **[lab-confirmed]** |
+| `Kris M. Martens` (16p) + `Kristina M. Martens` (1p) + `Kristina Martens` (2p) | **All one person — merge all three.** The Aβ-oligomer-vaccination papers are the same researcher, not a namesake. **[lab-confirmed]** — this reverses the evidence reading, which had them as two people |
+| `Sonny Thiara` (12p) + `Sharanjit Thiara` (1p) | **One person — merge.** `Sonny` is the short form; both are UBC critical-care neuroprognostication. **[lab-confirmed]** |
+| `Anna Wilkinson` (35p) vs `Amy Wilkinson` (2p) | **Two people — keep separate.** Amy's paediatric TBI serum-tau papers are a separate collaboration. **[lab-confirmed]** |
 
-Every note sits on the same ABCA1/apoE/GW3965/APP-PS1 research line in the same venues over an
-overlapping decade. `Jeniffer` is a straight misspelling of `Jennifer`, and the conflicting `Y.`
-and `A.` middle initials are metadata noise on conference abstracts, not two different people.
-**Merge all four into `Jeniffer Chan`'s successor note** — this is the single largest fix in the
-list, folding 6 spurious paper-links back onto one trainee. Note that this contradicts the general
-rule that conflicting middle initials imply distinct people; it is the one confirmed exception.
+The `Chan` outcome is worth noting for anyone automating this later: three of the four variants
+merge, but the conflicting-middle-initial rule was right about `Jennifer A. Chan`. Name evidence
+alone would have merged all four.
 
-### `Martens` — 3 notes, probably 2 people
+### Settled by reading the papers
 
-| Note | Papers | Years | Research line |
-|---|---|---|---|
-| `Kris M. Martens` | 16 | 2014–2020 | CHIMERA TBI model, APP/PS1 cerebrovascular work |
-| `Kristina M. Martens` | 1 | 2016 | the original CHIMERA rodent TBI paper |
-| `Kristina Martens` | 2 | 2015–2017 | Aβ-oligomer vaccination / epitope-specific immunotherapy |
+| Cluster | Decision and evidence |
+|---|---|
+| `M. R. Hayden` → `Michael R. Hayden` | Merge. His single paper is the hepatic ABCA1-transporter abstract — squarely Hayden's field. |
+| `Y. Deng` + `Yanhong Deng` | Merge. Both point at the *same* 2004 *J. Investigative Medicine* paper; one is the numbered conference abstract of the other. |
+| `Yu Deng` | Separate. 2006 *Cell* caspase-6/huntingtin paper — unrelated line, despite sharing the surname and initial. |
+| `G. R. Wayne Moore` + `GR Wayne Moore` + `George R. Moore` | Merge all three. All on MS diffusely-abnormal-white-matter work, two in the same 2021 journal. |
+| `David K.B. Li` + `DKB Li` + `David Li` | Merge all three. Same MS/DAWM paper series alongside Moore, Schabas and Kolind. |
+| `Jennifer Cooper` + `Jennifer G Cooper` + `Jennifer G. Cooper` + `J. Cooper` | Merge all four. `J. Cooper`'s lone paper is adolescent sport-concussion — her exact line. |
+| `Amanda Li` + `Amanda M. Li` | Merge. Both on the HLH / CRP / ferritin haematology series, 2023–2024. |
+| `Mike Lee` → `Michael Lee` | Merge. Both are the apoA-I CNS-entry paper — the A&D abstract and the JAHA journal version. |
+| `Mike Carr` → `Michael Carr`; `Tom Whyte` → `Thomas Whyte`; `Mike Tymko` → `Michael M. Tymko`; `Nik Josafatow` → `Nicholas Josafatow`; `SH Pasternak` → `Stephen Pasternak`; `AJ Schabas` → `Alice Schabas`; `Prescilla Carrion` → `Priscilla Carrion`; `Stephen Zhou` → `Steven Zhou`; `Jon D. Wood` → `Jonathan Wood` | Merge. Each pair shares a research line, era and often a single paper across its journal and abstract versions. |
+| `Noah Noah Silverberg` → `Noah D. Silverberg` | Merge. Duplicated forename token — a straight metadata artifact. |
+| `Sean Kim` vs `Seung Up Kim` | Separate. 2025 proteomics vs 1998 huntingtin — 27 years and two fields apart. |
+| `J. H. Kim` vs `Jungsu Kim` | Separate. modCHIMERA TBI model vs ABCA1/PDAPP amyloid. |
+| `C.Y. Chen` vs `Christopher Chen` | Separate. 1994 c-fos mRNA deadenylation vs 2019 vascular dysfunction in AD. |
+| `Benny K. K. Chan` vs `Senny Chan` | Separate. 2008 ABCG1 atherosclerosis vs 2024 CCNA dementia consortium. |
+| `Charlotte M. Anderson` vs `Christine Anderson` | Separate. TRANSCENDENT concussion vs Huntington HTT-lowering. |
+| `Adrian Wong` vs `Andy Kin On Wong` | Separate. Vascular dysfunction in AD vs TBI metabolomics. |
+| `Jody Peters` vs `James J. Peters` | Separate — and `James J. Peters` is probably not a person at all. It matches the *James J. Peters VA Medical Center*, i.e. an affiliation string parsed into the author list. |
 
-`Kris M. Martens` and `Kristina M. Martens` are the same CHIMERA researcher — **merge**.
-`Kristina Martens` sits on a different research line (amyloid-oligomer vaccination) with no
-CHIMERA overlap, so despite the compatible name it is likelier a different person — **leave
-separate** unless you can confirm otherwise.
+---
+
+## Still open — awaiting a decision
+
+Five pairs where the paper evidence points one way but is not conclusive on its own. My reading is
+given for each; none has been confirmed.
+
+| Pair | Evidence | My reading |
+|---|---|---|
+| `Suzanne Vercauteren` (2p, 2025) vs `Susan Vercauteren` (1p, 2023) | Suzanne is on the 2025 *Critical Care* TBI-metabolomics paper; Susan on the 2023 companion study from the same consortium | Same person |
+| `Elisa Wilson` (2p, 2018–2023) vs `Elizabeth Wilson` (1p, 2025) | Elisa on the 2023 metabolomics paper + 2018 CTBIRC consortium paper; Elizabeth on the 2025 companion | Same person |
+| `Rachel Zhao` (1p, 2018) vs `Rui Qi Zhao` (1p, 2018) | Same year, same lab, different subjects: Iba1 microglia image analysis vs small-molecule ABCA1/apoE inducers | Genuinely unsure — could be one trainee under an English and a Chinese given name |
+| `Daniele Imperiale` (2p) vs `Daniela Imperiale` (1p) | All three papers are versions of one 2025 international neurofilament-quantification survey | Same person, spelled inconsistently across records |
+| `David D. Howell` (1p, 2019) vs `David R. Howell` (1p, 2025) | 2019 *Lancet Neurology* CTE letter vs 2025 TRANSCENDENT concussion protocol — same field, conflicting middle initial | Unsure — conflicting initials usually mean two people, but concussion research is a small field |
 
 ---
 
