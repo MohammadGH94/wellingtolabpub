@@ -48,7 +48,58 @@ def _aid(authorship: dict) -> str:
     return raw.rstrip("/").rsplit("/", 1)[-1]
 
 
-def canonicalize_authorships(works: list[dict]) -> dict[str, str]:
+def load_merge_map(path: Path) -> dict[str, str]:
+    """Load curated variant → canonical display-name merges from a TSV.
+
+    This is the finished output of the duplicate review written up in
+    `human/duplicate-people.md`: people OpenAlex filed under more than one
+    `author.id`. Grouping by author ID cannot rejoin those — from OpenAlex's
+    side they are different authors — so the merges have to be supplied.
+
+    Columns are `canonical`, `variant`, and an ignored `variant_file`. Blank
+    lines and `#` comments are skipped. Chains (A→B, B→C) are resolved to their
+    endpoint so hand-edits to the file stay safe.
+
+    Returns a lookup keyed by both the literal variant and its normalized form.
+    Returns `{}` if the file is absent — the build then behaves as it did
+    before the map existed.
+    """
+    if not path.exists():
+        return {}
+
+    raw: dict[str, str] = {}
+    for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) < 2:
+            print(f"  merge-map: skipping malformed line {lineno}", file=sys.stderr)
+            continue
+        canonical, variant = parts[0].strip(), parts[1].strip()
+        if canonical.lower() == "canonical" and variant.lower() == "variant":
+            continue  # header row
+        if not canonical or not variant or canonical == variant:
+            continue
+        raw[variant] = canonical
+
+    resolved: dict[str, str] = {}
+    for variant, target in raw.items():
+        seen = {variant}
+        while target in raw and target not in seen:
+            seen.add(target)
+            target = raw[target]
+        resolved[variant] = target
+
+    out: dict[str, str] = {}
+    for variant, canonical in resolved.items():
+        out[variant] = canonical
+        out[normalize_name(variant)] = canonical
+    return out
+
+
+def canonicalize_authorships(
+    works: list[dict], merge_map: dict[str, str] | None = None
+) -> dict[str, str]:
     """Collapse author display-name variants by keying on OpenAlex author IDs.
 
     OpenAlex returns the same author with different display-name spellings on
@@ -81,6 +132,38 @@ def canonicalize_authorships(works: list[dict]) -> dict[str, str]:
         canonical_by_aid[aid] = sorted(
             counts.items(), key=lambda kv: (-kv[1], -len(kv[0]))
         )[0][0]
+
+    # Second pass: apply the curated merges. Everything above keys on
+    # `author.id`, which by construction cannot merge one human's several
+    # OpenAlex IDs; this folds those together by display name.
+    if merge_map:
+        folded: set[str] = set()
+        for aid, canon in canonical_by_aid.items():
+            target = merge_map.get(canon) or merge_map.get(normalize_name(canon))
+            if target and target != canon:
+                canonical_by_aid[aid] = target
+                folded.add(canon)
+        observed = {
+            normalize_name(n)
+            for names in name_counts_by_aid.values()
+            for n in names
+        }
+        unmatched = sorted(
+            k for k in merge_map
+            if k == normalize_name(k) and k not in observed
+        )
+        print(
+            f"Merge map: folded {len(folded)} name variant(s) into canonical names.",
+            file=sys.stderr,
+        )
+        if unmatched:
+            # Not fatal: OpenAlex records change, and a variant can legitimately
+            # vanish. Worth surfacing so the map can be pruned.
+            print(
+                f"  note: {len(unmatched)} merge-map variant(s) matched nothing "
+                f"in this fetch (e.g. {sorted(unmatched)[0]!r}).",
+                file=sys.stderr,
+            )
 
     # Mutate authorships in place.
     for w in works:
@@ -148,9 +231,15 @@ def build_indexes(works: list[dict]) -> dict[str, Any]:
     by_person: dict[str, list[dict]] = defaultdict(list)
     by_topic: dict[str, dict[str, Any]] = {}
     for w in works:
+        # One paper can carry the same person twice once merges are applied:
+        # consortium records list some people individually *and* again as group
+        # members, under different author IDs that the merge map unites. Without
+        # this guard the paper would be listed twice on their person note.
+        seen_here: set[str] = set()
         for a in pluck(w, "authorships", default=[]) or []:
             name = pluck(a, "author", "display_name", default="")
-            if name:
+            if name and name not in seen_here:
+                seen_here.add(name)
                 by_person[name].append(w)
         for c in pluck(w, "concepts", default=[]) or []:
             score = c.get("score") or 0

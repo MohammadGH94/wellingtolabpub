@@ -42,6 +42,16 @@ Full spec: `.claude/skills/obsidian-second-brain/references/ai-first-rules.md` (
 | `topics/` | One note per OpenAlex concept tagged on a paper | `topic` |
 | `theses/` | One note per UBC student thesis (planned, may be empty) | `thesis` |
 
+**Person identity.** One note per person, not per OpenAlex author ID. The build
+collapses display-name variants sharing an author ID, then applies the curated
+merges in `people-merge-map.tsv` for people OpenAlex filed under several IDs
+(69 such people, 144 notes). So a name here is a person, and `[[wikilinks]]` to
+them resolve to one note. Two caveats when answering questions about people:
+coverage is best-effort — duplicates whose names share nothing (an English and a
+transliterated given name, say) are undetectable from names alone and may remain;
+and same-surname notes with *conflicting middle initials* are deliberately kept
+separate, since every confirmed case proved to be two different researchers.
+
 Filenames:
 - Papers: `YYYY — Slugified Title.md`
 - People: `Full Name.md` (flat — no nested folders)

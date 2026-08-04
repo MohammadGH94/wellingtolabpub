@@ -66,7 +66,21 @@ python -m wellington_vault build --refresh
 
 # If author name resolution misfires, pin the OpenAlex author ID directly
 python -m wellington_vault build --author-id A1234567890
+
+# Build people/ keyed purely on OpenAlex author IDs, skipping the curated merges
+python -m wellington_vault build --no-merge-map
 ```
+
+### Duplicate people
+
+OpenAlex sometimes files one researcher under several author IDs, which would
+produce several person notes for the same human. The build collapses display-name
+variants per author ID, then applies `people-merge-map.tsv` — a curated list of
+merges that author IDs cannot express, since from OpenAlex's side those records
+are different authors. It covers 69 people split across 144 notes.
+
+The map is human-maintained; see [`human/duplicate-people.md`](human/duplicate-people.md)
+for the finished list, how each call was decided, and how to add to it.
 
 The cIRcle key is optional. Without it the build proceeds with OpenAlex only
 and the `theses/` folder will likely be empty (OpenAlex rarely indexes UBC

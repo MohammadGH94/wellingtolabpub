@@ -140,6 +140,10 @@ def render_paper_note(work: dict, pi_id: str | None = None) -> str:
         pluck(a, "author", "display_name", default="") for a in authorships
     ]
     author_names = [n for n in author_names if n]
+    # Merged names can repeat within one authorship list (consortium records
+    # name some people twice, individually and as group members). Keep first
+    # position so author order still reads correctly.
+    author_names = list(dict.fromkeys(author_names))
     author_links = [wikilink(person_filename(n), n) for n in author_names]
 
     concepts_raw = pluck(work, "concepts", default=[]) or []
@@ -254,6 +258,10 @@ def render_thesis_note(work: dict, pi_id: str | None = None) -> str:
         pluck(a, "author", "display_name", default="") for a in authorships
     ]
     author_names = [n for n in author_names if n]
+    # Merged names can repeat within one authorship list (consortium records
+    # name some people twice, individually and as group members). Keep first
+    # position so author order still reads correctly.
+    author_names = list(dict.fromkeys(author_names))
     author_links = [wikilink(person_filename(n), n) for n in author_names]
 
     concepts_raw = pluck(work, "concepts", default=[]) or []

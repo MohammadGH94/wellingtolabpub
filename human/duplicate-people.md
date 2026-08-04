@@ -125,14 +125,34 @@ conflict.
 
 ## Applying it
 
-Nothing in `vault/people/` has been edited. Those notes are regenerated from OpenAlex on every
-build, so hand-merging them would be undone by the next `python -m wellington_vault build`. The
-durable fix is a second pass in `canonicalize_authorships()` (`wellington_vault/build.py:51`) that
-applies this map after the existing author-ID grouping.
+**This is applied.** `wellington_vault/build.py` reads `people-merge-map.tsv` on every build and
+folds the variants in, so duplicates no longer come back after a rebuild. The pass runs after the
+existing author-ID grouping — IDs first, then these merges, because by construction author IDs
+cannot rejoin one person filed under several of them.
 
-One trap for whoever writes that pass: **a person's display name is not their filename.** `slugify`
-strips diacritics and rewrites non-ASCII hyphens, so `Alicia Algeciras‐Schimnich` lives at
-`Alicia Algeciras Schimnich.md` and `José Rodríguez` at `Jose Rodriguez.md`. Resolve names through
-`notes.person_filename()` rather than appending `.md`. The `variant_file` column in the TSV already
-carries the resolved filename.
+```bash
+python -m wellington_vault build                       # merge map applied by default
+python -m wellington_vault build --no-merge-map        # previous behaviour, IDs only
+python -m wellington_vault build --merge-map other.tsv # use a different map
+```
 
+The build prints how many variants it folded, and warns about any map entry that matched nothing
+in the fetch — useful for pruning the file as OpenAlex records change.
+
+**The vault checked into this repo predates the change.** It still shows 1,667 person notes; the
+merged counts appear the next time the build runs.
+
+### Editing the map
+
+Add a row to `people-merge-map.tsv` — `canonical`, then `variant`, tab-separated. The third column
+is informational. Chains are resolved (if A→B and B→C are both listed, A lands on C), so you cannot
+create a half-merge by appending carelessly.
+
+One trap: **a person's display name is not their filename.** `slugify` strips diacritics and
+rewrites non-ASCII hyphens, so `Alicia Algeciras‐Schimnich` lives at
+`Alicia Algeciras Schimnich.md` and `José Rodríguez` at `Jose Rodriguez.md`. The map is keyed on
+display names, and lookups also try a normalized form (lowercased, diacritics and periods stripped)
+— which is what lets `Jennifer G. Cooper` match a row written as `Jennifer G Cooper`.
+
+`tests/test_merge_map.py` covers the pass, including the consortium case where one paper names the
+same person twice under two IDs. Run it with `python -m unittest discover -s tests`.

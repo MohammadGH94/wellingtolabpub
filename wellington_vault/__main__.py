@@ -12,12 +12,18 @@ from .build import (
     build_indexes,
     canonicalize_authorships,
     extract_trainee_candidates,
+    load_merge_map,
     resolve_author,
     write_vault,
 )
 from .circle import CircleClient, CircleError, from_lastname_first, to_lastname_first
 from .openalex import OpenAlexClient
 from .util import normalize_name, pluck
+
+# Curated author-name merges live at the repo root next to the vault, since they
+# are a human-maintained data file rather than code. Resolved relative to this
+# package so the default works from any working directory.
+DEFAULT_MERGE_MAP = Path(__file__).resolve().parent.parent / "people-merge-map.tsv"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -68,6 +74,13 @@ def main(argv: list[str] | None = None) -> int:
                             "co-author graph; the raw query is noisy because it "
                             "also matches examining-committee acknowledgments). "
                             "(default: %(default)s)")
+    build.add_argument("--merge-map", type=Path, default=DEFAULT_MERGE_MAP,
+                       help="TSV of curated variant→canonical author-name merges, "
+                            "for people OpenAlex split across several author IDs. "
+                            "(default: %(default)s)")
+    build.add_argument("--no-merge-map", action="store_true",
+                       help="Ignore the merge map and key people purely on OpenAlex "
+                            "author IDs, as the build did before the map existed.")
     build.add_argument("--trainees-file", type=Path, default=None,
                        help="Optional path to a UTF-8 text file listing known "
                             "trainee names (one per line, '#' for comments) in "
@@ -119,7 +132,17 @@ def main(argv: list[str] | None = None) -> int:
         # "Cheryl L. Wellington") to one canonical name per OpenAlex author ID
         # before indexing — otherwise variants fragment into duplicate person
         # notes and break the co-author graph.
-        canonical_names = canonicalize_authorships(works)
+        #
+        # Then apply the curated merge map, which handles the case author IDs
+        # cannot: one person filed by OpenAlex under several author IDs.
+        merge_map: dict[str, str] = {}
+        if args.no_merge_map:
+            print("Merge map: disabled (--no-merge-map).", file=sys.stderr)
+        else:
+            merge_map = load_merge_map(args.merge_map)
+            if not merge_map:
+                print(f"Merge map: none found at {args.merge_map}.", file=sys.stderr)
+        canonical_names = canonicalize_authorships(works, merge_map=merge_map)
         pi_id = (author.get("id") or "").rstrip("/").rsplit("/", 1)[-1] or None
 
         indexes = build_indexes(works)
