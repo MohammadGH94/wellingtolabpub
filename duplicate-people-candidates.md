@@ -84,10 +84,16 @@ Where the name rules were inconclusive, the underlying paper lists were read. Ro
 | `Kris M. Martens` (16p) + `Kristina M. Martens` (1p) + `Kristina Martens` (2p) | **All one person — merge all three.** The Aβ-oligomer-vaccination papers are the same researcher, not a namesake. **[lab-confirmed]** — this reverses the evidence reading, which had them as two people |
 | `Sonny Thiara` (12p) + `Sharanjit Thiara` (1p) | **One person — merge.** `Sonny` is the short form; both are UBC critical-care neuroprognostication. **[lab-confirmed]** |
 | `Anna Wilkinson` (35p) vs `Amy Wilkinson` (2p) | **Two people — keep separate.** Amy's paediatric TBI serum-tau papers are a separate collaboration. **[lab-confirmed]** |
+| `David D. Howell` (1p, 2019) vs `David R. Howell` (1p, 2025) | **Two people — keep separate.** Both work in concussion/CTE, but the `D.` and `R.` middle initials are two different researchers. **[lab-confirmed]** |
 
 The `Chan` outcome is worth noting for anyone automating this later: three of the four variants
 merge, but the conflicting-middle-initial rule was right about `Jennifer A. Chan`. Name evidence
 alone would have merged all four.
+
+Taken together with `Howell`, the confirmed decisions leave the conflicting-middle-initial rule
+undefeated: every case where two notes shared a given name and surname but disagreed on the middle
+initial turned out to be two different people, even when both worked the same narrow field. Shared
+research line is *not* sufficient grounds to merge across a middle-initial conflict.
 
 ### Settled by reading the papers
 
@@ -115,7 +121,7 @@ alone would have merged all four.
 
 ## Still open — awaiting a decision
 
-Five pairs where the paper evidence points one way but is not conclusive on its own. My reading is
+Four pairs where the paper evidence points one way but is not conclusive on its own. My reading is
 given for each; none has been confirmed.
 
 | Pair | Evidence | My reading |
@@ -124,7 +130,6 @@ given for each; none has been confirmed.
 | `Elisa Wilson` (2p, 2018–2023) vs `Elizabeth Wilson` (1p, 2025) | Elisa on the 2023 metabolomics paper + 2018 CTBIRC consortium paper; Elizabeth on the 2025 companion | Same person |
 | `Rachel Zhao` (1p, 2018) vs `Rui Qi Zhao` (1p, 2018) | Same year, same lab, different subjects: Iba1 microglia image analysis vs small-molecule ABCA1/apoE inducers | Genuinely unsure — could be one trainee under an English and a Chinese given name |
 | `Daniele Imperiale` (2p) vs `Daniela Imperiale` (1p) | All three papers are versions of one 2025 international neurofilament-quantification survey | Same person, spelled inconsistently across records |
-| `David D. Howell` (1p, 2019) vs `David R. Howell` (1p, 2025) | 2019 *Lancet Neurology* CTE letter vs 2025 TRANSCENDENT concussion protocol — same field, conflicting middle initial | Unsure — conflicting initials usually mean two people, but concussion research is a small field |
 
 ---
 
