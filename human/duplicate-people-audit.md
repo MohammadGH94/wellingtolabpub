@@ -1,4 +1,8 @@
-# Potential duplicate people in `vault/people/`
+# Duplicate people — audit trail
+
+> **The finished list is [`duplicate-people.md`](duplicate-people.md).** This file is the working
+> record behind it: how the candidates were found, what evidence settled each one, and which pairs
+> were considered and rejected. Read it if you want to check a call or extend the analysis.
 
 Every one of the 1,667 person notes was walked and clustered by surname + given-name form (diacritics, hyphens and periods normalised away). These duplicates survive the build's ID-based canonicalization in `wellington_vault/build.py:51` because **OpenAlex itself assigned the same human more than one `author.id`** — collapsing display-name variants per ID cannot catch them, so a name-level pass is required.
 
@@ -8,7 +12,7 @@ Counts shown are `papers_with_wellington_lab` from each note's frontmatter, foll
 
 **Result: 69 merge clusters covering 144 notes. Applying them removes 75 duplicate person notes,
 taking `vault/people/` from 1,667 to 1,592.** The full mapping is in
-[`people-merge-map.tsv`](people-merge-map.tsv) (`canonical`, `variant`, `variant_file`), validated
+[`people-merge-map.tsv`](../people-merge-map.tsv) (`canonical`, `variant`, `variant_file`), validated
 so that every name resolves to a real file and no name appears in two clusters.
 
 Decisions came from three places: the name rules below, reading the underlying paper lists, and the

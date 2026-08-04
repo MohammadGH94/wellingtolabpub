@@ -24,6 +24,12 @@ wellingtolabpub/
 │   ├── topics/                ← one note per OpenAlex concept (auto-generated)
 │   └── theses/                ← one note per UBC cIRcle thesis by a lab trainee (auto-generated)
 │
+├── human/                     ← the parts meant for people, not Claude
+│   ├── index.html             ← interactive publication browser (open in any browser)
+│   ├── build_human.py         ← regenerates index.html from the vault
+│   ├── duplicate-people.md    ← finished list of duplicate person notes
+│   └── notes/                 ← hand-written notes; never overwritten by a build
+│
 ├── wellington_vault/          ← Python ingest package (stdlib-only)
 │   ├── openalex.py            ← OpenAlex client with on-disk cache
 │   ├── circle.py              ← UBC cIRcle (Open Collections) client
@@ -74,6 +80,17 @@ near-instant unless you pass `--refresh`.
 ---
 
 ## Usage
+
+### If you're a person
+
+Open **`human/index.html`** in any browser. It's a self-contained page — no server, no install, no
+network — with search, filters, a publications-per-year chart, and click-through from any author or
+topic to their papers. Regenerate it after each vault build with `python human/build_human.py`.
+
+See [`human/README.md`](human/README.md) for the rest of what's in there, including
+`human/notes/` — a place to write things by hand that a rebuild won't delete.
+
+### If you're Claude
 
 1. Run the build (above).
 2. Open `vault/` as a vault in Obsidian.
