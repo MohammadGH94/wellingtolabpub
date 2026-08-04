@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wellington Lab — Publication Browser</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-1: #fcfcfb;
+    --plane: #f9f9f7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --series-1: #2a78d6;
+    --border: rgba(11,11,11,0.10);
+    --accent-wash: rgba(42,120,214,0.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --surface-1: #1a1a19;
+      --plane: #0d0d0d;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --muted: #898781;
+      --grid: #2c2c2a;
+      --axis: #383835;
+      --series-1: #3987e5;
+      --border: rgba(255,255,255,0.10);
+      --accent-wash: rgba(57,135,229,0.14);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-1: #1a1a19; --plane: #0d0d0d; --text-primary: #ffffff;
+    --text-secondary: #c3c2b7; --muted: #898781; --grid: #2c2c2a;
+    --axis: #383835; --series-1: #3987e5; --border: rgba(255,255,255,0.10);
+    --accent-wash: rgba(57,135,229,0.14);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--plane); color: var(--text-primary);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 32px 20px 80px; }
+  a { color: var(--series-1); }
+
+  header h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  header p { margin: 0; color: var(--text-secondary); font-size: 14px; }
+  .prov { margin-top: 10px !important; color: var(--muted) !important; font-size: 12.5px !important; }
+  .theme-btn {
+    position: absolute; top: 28px; right: 20px; background: var(--surface-1);
+    border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px;
+    color: var(--text-secondary); cursor: pointer; font: inherit; font-size: 13px;
+  }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 10px; margin: 26px 0; }
+  .tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .tile .v { font-size: 25px; font-weight: 600; letter-spacing: -0.02em; }
+  .tile .v.sm { font-size: 19px; white-space: nowrap; }
+  .tile .l { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-bottom: 22px; }
+  .card h2 { font-size: 14px; margin: 0 0 2px; font-weight: 600; }
+  .card .sub { font-size: 12.5px; color: var(--muted); margin: 0 0 14px; }
+
+  /* chart */
+  .chart-scroll { overflow-x: auto; }
+  svg { display: block; }
+  .bar { fill: var(--series-1); cursor: pointer; }
+  .bar.dim { opacity: 0.28; }
+  .tick { fill: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+  .gridline { stroke: var(--grid); stroke-width: 1; }
+  .baseline { stroke: var(--axis); stroke-width: 1; }
+
+  #tip {
+    position: fixed; pointer-events: none; opacity: 0; transition: opacity .1s;
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 10px; font-size: 12.5px; box-shadow: 0 4px 14px rgba(0,0,0,0.13); z-index: 10;
+  }
+  #tip b { font-variant-numeric: tabular-nums; }
+
+  /* controls */
+  .tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 14px; }
+  .tab {
+    background: none; border: 1px solid transparent; border-radius: 8px; padding: 7px 13px;
+    font: inherit; font-size: 14px; color: var(--text-secondary); cursor: pointer;
+  }
+  .tab[aria-selected="true"] { background: var(--surface-1); border-color: var(--border); color: var(--text-primary); font-weight: 600; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  input[type="search"], select {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 11px; font: inherit; font-size: 14px; color: var(--text-primary);
+  }
+  input[type="search"] { flex: 1 1 260px; min-width: 0; }
+  label.chk { display: inline-flex; gap: 6px; align-items: center; font-size: 13.5px; color: var(--text-secondary); cursor: pointer; }
+  .count { font-size: 13px; color: var(--muted); margin-left: auto; font-variant-numeric: tabular-nums; }
+
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+  .chip {
+    background: var(--accent-wash); border: 1px solid var(--border); border-radius: 999px;
+    padding: 4px 10px; font-size: 12.5px; color: var(--text-primary); cursor: pointer;
+  }
+  .chip::after { content: " ✕"; color: var(--muted); }
+
+  /* rows */
+  ul.list { list-style: none; margin: 0; padding: 0; }
+  ul.list > li { border-top: 1px solid var(--border); padding: 12px 2px; }
+  ul.list > li:first-child { border-top: none; }
+  .row-t { font-weight: 500; cursor: pointer; }
+  .row-t:hover { color: var(--series-1); }
+  .row-m { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+  .row-m .yr { font-variant-numeric: tabular-nums; }
+  .pill { display: inline-block; border: 1px solid var(--border); border-radius: 5px; padding: 0 5px; margin-left: 6px; font-size: 11px; color: var(--text-secondary); }
+  .detail { margin-top: 10px; padding: 12px; background: var(--plane); border-radius: 8px; font-size: 13.5px; }
+  .detail p { margin: 0 0 8px; color: var(--text-secondary); }
+  .detail .lbl { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .linkish { color: var(--series-1); cursor: pointer; }
+  .linkish:hover { text-decoration: underline; }
+  .empty { padding: 30px 0; color: var(--muted); text-align: center; }
+  .more { margin-top: 14px; text-align: center; }
+  .more button { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 8px 16px; font: inherit; color: var(--text-secondary); cursor: pointer; }
+  footer { margin-top: 34px; font-size: 12.5px; color: var(--muted); }
+</style>
+</head>
+<body>
+<button class="theme-btn" id="themeBtn" type="button">Theme</button>
+<div class="wrap">
+
+<header>
+  <h1>Wellington Lab — Publication Browser</h1>
+  <p>Every publication, co-author, research topic and trainee thesis from Dr. Cheryl Wellington's lab at UBC.</p>
+  <p class="prov">Built from the Obsidian vault in <code>vault/</code>. Publications from openalex.org; theses from UBC cIRcle. Citation counts are a snapshot from vault-build time and drift.</p>
+</header>
+
+<div class="tiles" id="tiles"></div>
+
+<section class="card">
+  <h2>Publications per year</h2>
+  <p class="sub">Click a bar to filter the lists below to that year. Click again to clear.</p>
+  <div class="chart-scroll"><svg id="chart" role="img" aria-label="Bar chart of publications per year"></svg></div>
+</section>
+
+<section class="card">
+  <div class="tabs" role="tablist" id="tabs"></div>
+  <div class="controls">
+    <input type="search" id="q" placeholder="Search…  (press / to focus)" autocomplete="off">
+    <select id="role">
+      <option value="">Any role</option>
+      <option value="first-author">Wellington first author</option>
+      <option value="last-author">Wellington last author</option>
+      <option value="co-author">Wellington co-author</option>
+    </select>
+    <select id="sort">
+      <option value="year">Newest first</option>
+      <option value="year-asc">Oldest first</option>
+      <option value="cites">Most cited</option>
+    </select>
+    <label class="chk"><input type="checkbox" id="oa"> Open access only</label>
+    <span class="count" id="count"></span>
+  </div>
+  <div class="chips" id="chips"></div>
+  <ul class="list" id="list"></ul>
+  <div class="more" id="more"></div>
+</section>
+
+<footer>
+  Regenerate with <code>python human/build_human.py</code> after each vault rebuild.
+  This page is for people; <code>vault/</code> is written for Claude.
+</footer>
+</div>
+<div id="tip"></div>
+
+<script>
+const DATA = /*__DATA__*/;
+const BUILT = "/*__BUILT__*/";
+
+const S = { tab: "papers", q: "", role: "", sort: "year", oa: false,
+            year: null, person: null, topic: null, limit: 40, open: new Set() };
+
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
+const el = id => document.getElementById(id);
+
+/* ---------- stat tiles ---------- */
+const years = DATA.papers.map(p => p.y).filter(Boolean);
+const tiles = [
+  ["Publications", DATA.papers.length.toLocaleString()],
+  ["Citations", DATA.papers.reduce((a, p) => a + p.c, 0).toLocaleString()],
+  ["Co-authors", DATA.people.length.toLocaleString()],
+  ["Topics", DATA.topics.length.toLocaleString()],
+  ["Trainee theses", DATA.theses.length.toLocaleString()],
+  ["Span", Math.min(...years) + "–" + Math.max(...years), "sm"],
+];
+el("tiles").innerHTML = tiles.map(([l, v, cls]) =>
+  `<div class="tile"><div class="v ${cls || ""}">${esc(v)}</div><div class="l">${esc(l)}</div></div>`).join("");
+
+/* ---------- chart: publications per year ---------- */
+const byYear = {};
+DATA.papers.forEach(p => { if (p.y) byYear[p.y] = (byYear[p.y] || 0) + 1; });
+const yrs = Object.keys(byYear).map(Number).sort((a, b) => a - b);
+const yMin = yrs[0], yMax = yrs[yrs.length - 1];
+const allYears = [];
+for (let y = yMin; y <= yMax; y++) allYears.push(y);
+const maxN = Math.max(...Object.values(byYear));
+
+function drawChart() {
+  const barW = 13, gap = 2, padL = 30, padR = 8, padT = 10, h = 150, padB = 26;
+  const w = padL + allYears.length * (barW + gap) + padR;
+  const plotH = h - padT - padB;
+  const yScale = n => plotH - (n / maxN) * plotH;
+  let s = `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">`;
+  // recessive gridlines + value ticks
+  const steps = [0, Math.round(maxN / 2), maxN];
+  steps.forEach(n => {
+    const y = padT + yScale(n);
+    s += `<line class="${n === 0 ? "baseline" : "gridline"}" x1="${padL}" y1="${y}" x2="${w - padR}" y2="${y}"/>`;
+    s += `<text class="tick" x="${padL - 6}" y="${y + 3}" text-anchor="end">${n}</text>`;
+  });
+  allYears.forEach((y, i) => {
+    const n = byYear[y] || 0;
+    const x = padL + i * (barW + gap);
+    if (n > 0) {
+      const bh = Math.max(2, plotH - yScale(n));
+      s += `<rect class="bar" data-year="${y}" x="${x}" y="${padT + yScale(n)}" `
+         + `width="${barW}" height="${bh}" rx="4"><title>${y}: ${n} publication${n === 1 ? "" : "s"}</title></rect>`;
+    }
+    if (y % 5 === 0) s += `<text class="tick" x="${x + barW / 2}" y="${h - 8}" text-anchor="middle">${y}</text>`;
+  });
+  el("chart").outerHTML = s + "</svg>";
+  el("chart") || document.querySelector("svg").setAttribute("id", "chart");
+  bindChart();
+}
+function bindChart() {
+  const tip = el("tip");
+  document.querySelectorAll(".bar").forEach(b => {
+    const y = +b.dataset.year;
+    b.addEventListener("click", () => { S.year = S.year === y ? null : y; S.limit = 40; render(); });
+    b.addEventListener("mousemove", e => {
+      tip.innerHTML = `<b>${y}</b> — ${byYear[y]} publication${byYear[y] === 1 ? "" : "s"}`;
+      tip.style.opacity = 1;
+      tip.style.left = Math.min(e.clientX + 14, innerWidth - 170) + "px";
+      tip.style.top = (e.clientY - 38) + "px";
+    });
+    b.addEventListener("mouseleave", () => { tip.style.opacity = 0; });
+  });
+}
+function paintChartSelection() {
+  document.querySelectorAll(".bar").forEach(b => {
+    b.classList.toggle("dim", S.year !== null && +b.dataset.year !== S.year);
+  });
+}
+
+/* ---------- tabs ---------- */
+const TABS = [["papers", "Papers"], ["people", "People"], ["topics", "Topics"], ["theses", "Theses"]];
+el("tabs").innerHTML = TABS.map(([k, l]) =>
+  `<button class="tab" role="tab" data-tab="${k}" aria-selected="${k === S.tab}">${l}</button>`).join("");
+el("tabs").addEventListener("click", e => {
+  const b = e.target.closest(".tab"); if (!b) return;
+  S.tab = b.dataset.tab; S.limit = 40; S.open.clear(); render();
+});
+
+/* ---------- filtering ---------- */
+function match(hay, q) { return hay.toLowerCase().includes(q); }
+
+function papersFiltered() {
+  const q = S.q.toLowerCase().trim();
+  return DATA.papers.filter(p => {
+    if (S.year !== null && p.y !== S.year) return false;
+    if (S.role && p.r !== S.role) return false;
+    if (S.oa && !p.oa) return false;
+    if (S.person && !p.a.includes(S.person)) return false;
+    if (S.topic && !p.k.includes(S.topic)) return false;
+    if (!q) return true;
+    return match(p.t, q) || match(p.v, q) || match(p.ab, q)
+        || p.a.some(a => match(a, q)) || p.k.some(k => match(k, q));
+  }).sort((a, b) =>
+      S.sort === "cites" ? b.c - a.c
+    : S.sort === "year-asc" ? (a.y || 0) - (b.y || 0)
+    : (b.y || 0) - (a.y || 0));
+}
+
+function renderPapers() {
+  const rows = papersFiltered();
+  el("count").textContent = rows.length.toLocaleString() + " of " + DATA.papers.length.toLocaleString() + " publications";
+  if (!rows.length) return `<li class="empty">Nothing matches these filters.</li>`;
+  return rows.slice(0, S.limit).map((p, i) => {
+    const idx = DATA.papers.indexOf(p);
+    const open = S.open.has(idx);
+    const meta = [`<span class="yr">${p.y || "n.d."}</span>`];
+    if (p.v) meta.push(esc(p.v));
+    meta.push(`${p.c} citation${p.c === 1 ? "" : "s"}`);
+    let h = `<li><div class="row-t" data-open="${idx}">${esc(p.t)}</div>`
+      + `<div class="row-m">` + meta.join(" · ")
+      + (p.r ? `<span class="pill">${esc(p.r)}</span>` : "")
+      + (p.oa ? `<span class="pill">open access</span>` : "")
+      + `</div>`;
+    if (open) {
+      h += `<div class="detail">`
+        + (p.ab ? `<p>${esc(p.ab)}${p.ab.length >= 600 ? "…" : ""}</p>` : `<p><em>No abstract in OpenAlex.</em></p>`)
+        + `<p><span class="lbl">Authors</span><br>` + p.a.map(a =>
+            `<span class="linkish" data-person="${esc(a)}">${esc(a)}</span>`).join(", ") + `</p>`
+        + (p.k.length ? `<p><span class="lbl">Topics</span><br>` + p.k.map(k =>
+            `<span class="linkish" data-topic="${esc(k)}">${esc(k)}</span>`).join(", ") + `</p>` : "")
+        + (p.doi ? `<p><a href="${esc(p.doi)}" target="_blank" rel="noopener">${esc(p.doi)}</a></p>` : "")
+        + `</div>`;
+    }
+    return h + `</li>`;
+  }).join("");
+}
+
+function renderPeople() {
+  const q = S.q.toLowerCase().trim();
+  const rows = DATA.people.filter(p => !q || match(p.n, q))
+    .sort((a, b) => b.p - a.p || a.n.localeCompare(b.n));
+  el("count").textContent = rows.length.toLocaleString() + " of " + DATA.people.length.toLocaleString() + " people";
+  if (!rows.length) return `<li class="empty">No one matches that search.</li>`;
+  return rows.slice(0, S.limit).map(p =>
+    `<li><div class="row-t" data-person="${esc(p.n)}">${esc(p.n)}`
+    + (p.r === "principal-investigator" ? `<span class="pill">PI</span>` : "")
+    + `</div><div class="row-m"><span class="yr">${p.p}</span> paper${p.p === 1 ? "" : "s"} with the lab`
+    + (p.f ? ` · <span class="yr">${p.f}–${p.l}</span>` : "") + `</div></li>`).join("");
+}
+
+function renderTopics() {
+  const q = S.q.toLowerCase().trim();
+  const rows = DATA.topics.filter(t => !q || match(t.n, q))
+    .sort((a, b) => b.p - a.p || a.n.localeCompare(b.n));
+  el("count").textContent = rows.length.toLocaleString() + " of " + DATA.topics.length.toLocaleString() + " topics";
+  if (!rows.length) return `<li class="empty">No topic matches that search.</li>`;
+  return rows.slice(0, S.limit).map(t =>
+    `<li><div class="row-t" data-topic="${esc(t.n)}">${esc(t.n)}</div>`
+    + `<div class="row-m"><span class="yr">${t.p}</span> paper${t.p === 1 ? "" : "s"}`
+    + (t.f ? ` · <span class="yr">${t.f}–${t.l}</span>` : "") + `</div></li>`).join("");
+}
+
+function renderTheses() {
+  const q = S.q.toLowerCase().trim();
+  const rows = DATA.theses.filter(t => !q || match(t.t, q) || match(t.c, q) || match(t.pr, q))
+    .sort((a, b) => (b.y || 0) - (a.y || 0));
+  el("count").textContent = rows.length + " of " + DATA.theses.length + " theses";
+  if (!rows.length) return `<li class="empty">No thesis matches that search.</li>`;
+  return rows.map(t =>
+    `<li><div class="row-t">${t.u ? `<a href="${esc(t.u)}" target="_blank" rel="noopener">${esc(t.t)}</a>` : esc(t.t)}</div>`
+    + `<div class="row-m"><span class="yr">${esc(t.y)}</span> · ${esc(t.c)}`
+    + (t.d ? " · " + esc(t.d) : "") + (t.pr ? " · " + esc(t.pr) : "") + `</div></li>`).join("");
+}
+
+function renderChips() {
+  const chips = [];
+  if (S.year !== null) chips.push(["year", "Year: " + S.year]);
+  if (S.person) chips.push(["person", "Author: " + S.person]);
+  if (S.topic) chips.push(["topic", "Topic: " + S.topic]);
+  el("chips").innerHTML = chips.map(([k, l]) =>
+    `<button class="chip" data-clear="${k}">${esc(l)}</button>`).join("");
+}
+
+function render() {
+  document.querySelectorAll(".tab").forEach(b =>
+    b.setAttribute("aria-selected", b.dataset.tab === S.tab));
+  el("role").style.display = S.tab === "papers" ? "" : "none";
+  el("sort").style.display = S.tab === "papers" ? "" : "none";
+  document.querySelector("label.chk").style.display = S.tab === "papers" ? "" : "none";
+  el("list").innerHTML =
+      S.tab === "papers" ? renderPapers()
+    : S.tab === "people" ? renderPeople()
+    : S.tab === "topics" ? renderTopics()
+    : renderTheses();
+  const shown = el("list").children.length;
+  const total = S.tab === "papers" ? papersFiltered().length
+    : S.tab === "people" ? DATA.people.filter(p => !S.q || match(p.n, S.q.toLowerCase())).length
+    : S.tab === "topics" ? DATA.topics.filter(t => !S.q || match(t.n, S.q.toLowerCase())).length : 0;
+  el("more").innerHTML = (total > S.limit && S.tab !== "theses")
+    ? `<button id="moreBtn">Show more (${(total - S.limit).toLocaleString()} left)</button>` : "";
+  const mb = el("moreBtn");
+  if (mb) mb.onclick = () => { S.limit += 60; render(); };
+  renderChips();
+  paintChartSelection();
+}
+
+/* ---------- events ---------- */
+el("q").addEventListener("input", e => { S.q = e.target.value; S.limit = 40; render(); });
+el("role").addEventListener("change", e => { S.role = e.target.value; S.limit = 40; render(); });
+el("sort").addEventListener("change", e => { S.sort = e.target.value; render(); });
+el("oa").addEventListener("change", e => { S.oa = e.target.checked; S.limit = 40; render(); });
+
+document.addEventListener("click", e => {
+  const t = e.target;
+  if (t.dataset.open !== undefined) {
+    const i = +t.dataset.open;
+    S.open.has(i) ? S.open.delete(i) : S.open.add(i);
+    render(); return;
+  }
+  if (t.dataset.person) { S.person = t.dataset.person; S.topic = null; S.tab = "papers"; S.limit = 40; render(); return; }
+  if (t.dataset.topic)  { S.topic = t.dataset.topic; S.person = null; S.tab = "papers"; S.limit = 40; render(); return; }
+  if (t.dataset.clear)  { S[t.dataset.clear] = t.dataset.clear === "year" ? null : null; S.limit = 40; render(); return; }
+});
+
+document.addEventListener("keydown", e => {
+  if (e.key === "/" && document.activeElement !== el("q")) { e.preventDefault(); el("q").focus(); }
+  if (e.key === "Escape") { el("q").value = ""; S.q = ""; render(); }
+});
+
+el("themeBtn").addEventListener("click", () => {
+  const cur = document.documentElement.getAttribute("data-theme");
+  const next = cur === "dark" ? "light" : cur === "light" ? "dark"
+    : (matchMedia("(prefers-color-scheme: dark)").matches ? "light" : "dark");
+  document.documentElement.setAttribute("data-theme", next);
+});
+
+drawChart();
+render();
+</script>
+</body>
+</html>
