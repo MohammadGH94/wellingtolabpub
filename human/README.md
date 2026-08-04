@@ -28,6 +28,10 @@ xdg-open human/index.html      # Linux
 A single self-contained file — the vault's data is embedded in it, so it works offline and can be
 emailed or dropped on a shared drive as-is.
 
+It has two views, switched at the top: **Dashboard** and **Map**.
+
+### Dashboard
+
 What you can do with it:
 
 - **Search everything at once** — titles, abstracts, venues, author names and topics. Press `/` to
@@ -38,9 +42,40 @@ What you can do with it:
 - **Click any paper** to expand its abstract, full author list, topics and DOI link.
 - **Click any author or topic** to pivot the paper list onto them — this is how you walk the
   co-author network without opening Obsidian.
-- **Switch tabs** to browse the 1,667 co-authors, 684 research topics, or the trainee theses (which
+- **Switch tabs** to browse the ~1,600 co-authors, 684 research topics, or the trainee theses (which
   link out to UBC cIRcle).
 - **Toggle light/dark** with the button in the corner; it follows your system theme by default.
+
+### Map
+
+The network view — the same thing Obsidian's graph view shows for `vault/`, but without needing
+Obsidian. Two modes:
+
+- **People** — who publishes with whom. Node size is papers with the lab; a link means two people
+  appear on that many papers together.
+- **Topics** — what gets studied together. Node size is how many lab papers carry that topic; a
+  link means two topics are tagged on the same papers.
+
+Drag to pan, scroll to zoom, drag a node to pull it out of the tangle, hover for counts, and click
+any node to jump back to the Dashboard with its papers already filtered. The search box finds and
+centres a node. "Re-layout" reshuffles the starting positions, which sometimes untangles a knot.
+
+**Two thresholds control what you see**, and both exist because the raw graph is unreadable:
+
+- *Minimum papers* — how many papers a person or topic needs before they appear at all.
+- *Minimum shared papers* — how strong a link has to be before it is drawn. At a threshold of 1 the
+  co-author network is about 12,000 links of solid hairball; requiring repeat collaboration is what
+  makes structure visible.
+
+**One judgment call worth knowing about.** Papers with more than 30 authors are excluded from the
+co-authorship links (16 papers). Being named on a consortium paper says very little about who
+actually works together, and each such paper contributes up to *n*(*n*−1)/2 links on its own — the
+79-author paper alone would add 3,081. Those papers are untouched everywhere else in the browser;
+only the map's links ignore them. The methodology note under the map states this on the page too,
+along with how many nodes were dropped for having no qualifying link.
+
+The map is a filtered view by design. The Dashboard's People and Topics tabs remain the complete,
+unfiltered list.
 
 ### Regenerating it
 
@@ -58,14 +93,81 @@ generated output and your edits to it will be overwritten.
 
 ---
 
-## Two things to know about the data
+## Publishing it
+
+`index.html` is one static file with no external requests, so any static host will serve it. There
+is nothing to build and no server-side anything.
+
+### Vercel (free Hobby tier)
+
+The one setting that matters is **Root Directory** — point it at `human` and Vercel serves
+`index.html` at `/` with no config file.
+
+1. Go to [vercel.com/new](https://vercel.com/new) and import this GitHub repository.
+2. **Framework Preset:** Other.
+3. **Root Directory:** `human` ← the important one.
+4. Leave Build Command and Output Directory empty. There is no build step.
+5. Deploy.
+
+You get a `*.vercel.app` URL immediately, and every later push that changes `human/index.html`
+redeploys automatically. `.vercelignore` in this folder keeps the deployment to the built page.
+
+Or from the command line:
+
+```bash
+npm i -g vercel
+cd human
+vercel          # preview URL
+vercel --prod   # production URL
+```
+
+The Hobby tier is free and this page sits far inside its limits — a single ~500 KB file, no
+functions, no bandwidth to speak of. Note that Hobby is licensed for non-commercial use; an
+academic lab page qualifies.
+
+### Alternatives
+
+**Cloudflare Pages** and **Netlify** work identically — import the repo, set the root/publish
+directory to `human`, no build command.
+
+**GitHub Pages** is the awkward one here: it can only serve from a branch root or `/docs`, not from
+an arbitrary folder, so publishing `human/` needs either a small Actions workflow or moving the
+file. Vercel is genuinely less work for this layout.
+
+### Two things to keep in mind
+
+**It is a snapshot, and it will go stale.** The deployed page only changes when a rebuilt
+`index.html` is committed. Make it part of the refresh:
+
+```bash
+python -m wellington_vault build && python human/build_human.py
+git commit -am "Refresh vault and browser" && git push
+```
+
+**It is public.** Everything on the page is already-published scholarly metadata from OpenAlex and
+UBC cIRcle, but a deployment does put ~1,600 named co-authors and a citation snapshot on an
+open URL. Citation counts in particular are frozen at build time, so date the page or refresh it on
+a schedule if people are going to cite what they see.
+
+---
+
+## Three things to know about the data
 
 **Citation counts are a snapshot.** They were true at vault-build time and drift upward
 continuously. Re-run the build for current numbers.
 
-**Some people appear more than once.** OpenAlex sometimes files one researcher under several author
-IDs, so the co-author count is inflated — 1,667 notes describe roughly 1,592 people. See
-`duplicate-people.md`. This affects the People tab and the author lists, not the publication count.
+**Duplicate people are merged here.** OpenAlex files some researchers under several author IDs,
+which would show one person several times. `build_human.py` applies `people-merge-map.tsv` — the
+same file the vault build uses — so the browser shows 1,599 people rather than the vault's 1,667
+notes. Pass `--no-merge-map` to see it unmerged.
+
+Because of that, **paper counts here are counted from the papers, not read from the person notes**.
+Summing a merged cluster's note counts would double-count any paper naming two variants of the same
+person, and it also means the number shown always matches what clicking that person lists. A
+handful of people can therefore differ by one or two from their `vault/people/` note.
+
+Coverage is not complete: duplicates whose names share nothing — an English and a transliterated
+given name, say — cannot be found from names alone. See `duplicate-people.md`.
 
 ---
 

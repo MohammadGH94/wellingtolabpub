@@ -125,6 +125,31 @@
   .more { margin-top: 14px; text-align: center; }
   .more button { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 8px 16px; font: inherit; color: var(--text-secondary); cursor: pointer; }
   footer { margin-top: 34px; font-size: 12.5px; color: var(--muted); }
+
+  /* top-level view switcher */
+  .views { display: inline-flex; gap: 2px; background: var(--surface-1); border: 1px solid var(--border);
+           border-radius: 10px; padding: 3px; margin: 22px 0 4px; }
+  .views button {
+    background: none; border: none; border-radius: 7px; padding: 7px 18px;
+    font: inherit; font-size: 14px; color: var(--text-secondary); cursor: pointer;
+  }
+  .views button[aria-selected="true"] { background: var(--accent-wash); color: var(--text-primary); font-weight: 600; }
+  [hidden] { display: none !important; }
+
+  /* map */
+  .map-wrap { position: relative; }
+  #map { display: block; width: 100%; height: 560px; border-radius: 8px; cursor: grab; touch-action: none; }
+  #map.grabbing { cursor: grabbing; }
+  .map-legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin-top: 12px; }
+  .map-legend .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--series-1); margin-right: 5px; vertical-align: middle; }
+  .map-legend .line { display: inline-block; width: 16px; height: 0; border-top: 1px solid var(--axis); margin-right: 5px; vertical-align: middle; }
+  .map-note { font-size: 12.5px; color: var(--muted); margin: 14px 0 0; line-height: 1.6; }
+  .map-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 14px; }
+  .btn {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 13px; font: inherit; font-size: 14px; color: var(--text-secondary); cursor: pointer;
+  }
+  .btn:hover { color: var(--text-primary); }
 </style>
 </head>
 <body>
@@ -136,6 +161,13 @@
   <p>Every publication, co-author, research topic and trainee thesis from Dr. Cheryl Wellington's lab at UBC.</p>
   <p class="prov">Built from the Obsidian vault in <code>vault/</code>. Publications from openalex.org; theses from UBC cIRcle. Citation counts are a snapshot from vault-build time and drift.</p>
 </header>
+
+<nav class="views" id="views" role="tablist">
+  <button role="tab" data-view="dashboard" aria-selected="true">Dashboard</button>
+  <button role="tab" data-view="map" aria-selected="false">Map</button>
+</nav>
+
+<div id="view-dashboard">
 
 <div class="tiles" id="tiles"></div>
 
@@ -167,6 +199,35 @@
   <ul class="list" id="list"></ul>
   <div class="more" id="more"></div>
 </section>
+
+</div><!-- /view-dashboard -->
+
+<div id="view-map" hidden>
+  <section class="card">
+    <h2 id="mapTitle">Co-author network</h2>
+    <p class="sub" id="mapSub"></p>
+    <div class="controls">
+      <select id="mapMode">
+        <option value="people">People — who publishes with whom</option>
+        <option value="topics">Topics — what gets studied together</option>
+      </select>
+      <select id="mapMin"></select>
+      <select id="mapWeight"></select>
+      <input type="search" id="mapQ" placeholder="Find someone on the map…" autocomplete="off">
+      <button class="btn" id="mapReheat" type="button">Re-layout</button>
+    </div>
+    <div class="map-wrap">
+      <canvas id="map"></canvas>
+      <div class="map-empty" id="mapEmpty" hidden></div>
+    </div>
+    <div class="map-legend">
+      <span><span class="swatch"></span>one <span id="mapNodeKind">person</span> — bigger means more papers</span>
+      <span><span class="line"></span>published together — thicker means more shared papers</span>
+      <span>drag to pan · scroll to zoom · click a node to see its papers</span>
+    </div>
+    <p class="map-note" id="mapMethod"></p>
+  </section>
+</div><!-- /view-map -->
 
 <footer>
   Regenerate with <code>python human/build_human.py</code> after each vault rebuild.
@@ -410,6 +471,373 @@ el("themeBtn").addEventListener("click", () => {
     : (matchMedia("(prefers-color-scheme: dark)").matches ? "light" : "dark");
   document.documentElement.setAttribute("data-theme", next);
 });
+
+/* ============================ map view ============================ */
+const G = DATA.graph || { people: [], topics: [] };
+const M = {
+  mode: "people", min: 5, weight: 2, q: "",
+  nodes: [], edges: [], hover: null, pinned: null, drag: null,
+  scale: 1, ox: 0, oy: 0, alpha: 0, raf: null, built: false,
+};
+const MODES = {
+  people: { mins: [2, 3, 5, 8, 12], def: 5, weights: [2, 3, 5], wdef: 2,
+            src: () => DATA.people, edges: () => G.people, unit: "person", units: "people",
+            title: "Co-author network", label: n => n.n },
+  topics: { mins: [3, 5, 10, 20], def: 5, weights: [3, 5, 8], wdef: 3,
+            src: () => DATA.topics, edges: () => G.topics, unit: "topic", units: "topics",
+            title: "Topic map", label: n => n.n },
+};
+
+function fillSelects() {
+  const cfg = MODES[M.mode];
+  el("mapMin").innerHTML = cfg.mins.map(v =>
+    `<option value="${v}"${v === M.min ? " selected" : ""}>${v}+ papers</option>`).join("");
+  el("mapWeight").innerHTML = cfg.weights.map(v =>
+    `<option value="${v}"${v === M.weight ? " selected" : ""}>linked at ${v}+ shared papers</option>`).join("");
+  el("mapNodeKind").textContent = cfg.unit;
+  el("mapTitle").textContent = cfg.title;
+  el("mapQ").placeholder = M.mode === "people" ? "Find someone on the map…" : "Find a topic on the map…";
+}
+
+function buildGraph() {
+  const cfg = MODES[M.mode];
+  const src = cfg.src();
+  const keep = new Map();               // source index -> node
+  src.forEach((d, i) => {
+    if ((d.p || 0) >= M.min) keep.set(i, { i, n: d.n, p: d.p || 0, deg: 0 });
+  });
+  const edges = [];
+  cfg.edges().forEach(([a, b, w]) => {
+    if (w < M.weight) return;
+    const na = keep.get(a), nb = keep.get(b);
+    if (!na || !nb) return;
+    edges.push({ a: na, b: nb, w });
+    na.deg++; nb.deg++;
+  });
+  // Isolates carry no structure and just ring the plot, so drop them and say how many.
+  const nodes = [...keep.values()].filter(n => n.deg > 0);
+  M.isolates = keep.size - nodes.length;
+
+  const W = el("map").clientWidth || 900, H = el("map").clientHeight || 560;
+  // FR's ideal separation for this node count and canvas area.
+  M.k = Math.sqrt((W * H) / Math.max(nodes.length, 1)) * 0.72;
+  M.temp = W / 6;
+  M.autofit = true;
+  nodes.forEach((n, i) => {
+    const a = (i / nodes.length) * Math.PI * 2;
+    n.r = 3.5 + Math.sqrt(n.p) * 1.5;
+    n.x = W / 2 + Math.cos(a) * W / 4 + (Math.random() - 0.5) * 40;
+    n.y = H / 2 + Math.sin(a) * H / 4 + (Math.random() - 0.5) * 40;
+  });
+  // Label only the hubs — a label on every node is unreadable at this density.
+  const ranked = [...nodes].sort((a, b) => b.p - a.p);
+  ranked.forEach((n, i) => { n.lab = i < 28; });
+
+  M.nodes = nodes; M.edges = edges;
+  // Any hover/pin refers to nodes that no longer exist; drop them and the
+  // tooltip with them, or a stale name hangs over the new graph.
+  M.hover = null; M.pinned = null; M.drag = null;
+  el("tip").style.opacity = 0;
+
+  const cfgu = cfg.units;
+  el("mapSub").textContent =
+    `${nodes.length.toLocaleString()} ${cfgu}, ${edges.length.toLocaleString()} links. `
+    + `Click a node to open its papers in the dashboard.`;
+  el("mapEmpty").hidden = nodes.length > 0;
+  el("mapEmpty").textContent = "Nothing connected at these thresholds — try lowering them.";
+  el("mapMethod").innerHTML = M.mode === "people"
+    ? `Two people are linked when they appear on ${M.weight} or more papers together. `
+      + `Papers with more than ${G.authorCap} authors are left out of the links `
+      + `(${G.consortiumSkipped} of them): being named on a consortium paper says little about `
+      + `who actually works together, and one 79-author paper alone would add 3,081 links. `
+      + `Node size is papers with the lab. `
+      + `${M.isolates.toLocaleString()} ${cfgu} met the paper threshold but had no qualifying link and are not drawn. `
+      + `The People tab on the dashboard lists all of them.`
+    : `Two topics are linked when they are tagged on ${M.weight} or more of the same papers. `
+      + `Node size is how many lab papers carry that topic. `
+      + `${M.isolates.toLocaleString()} ${cfgu} met the paper threshold but had no qualifying link and are not drawn. `
+      + `Topics come from OpenAlex's concept taxonomy, so the vocabulary is theirs, not the lab's.`;
+}
+
+/* Fruchterman-Reingold: repulsion k²/d, edge attraction d²/k, displacement
+   clamped to a temperature that cools each step. Node coordinates are laid out
+   in their own space and the view is fitted to them afterwards, so the absolute
+   scale of the layout never has to match the canvas. */
+function tick() {
+  const nodes = M.nodes, edges = M.edges, n = nodes.length;
+  if (!n) return;
+  const k = M.k, k2 = k * k;
+
+  for (const a of nodes) { a.dx = 0; a.dy = 0; }
+
+  for (let i = 0; i < n; i++) {
+    const a = nodes[i];
+    for (let j = i + 1; j < n; j++) {
+      const b = nodes[j];
+      let dx = a.x - b.x, dy = a.y - b.y;
+      let d2 = dx * dx + dy * dy;
+      if (d2 < 0.01) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = 0.25; }
+      const d = Math.sqrt(d2);
+      const f = k2 / d;
+      const fx = (dx / d) * f, fy = (dy / d) * f;
+      a.dx += fx; a.dy += fy; b.dx -= fx; b.dy -= fy;
+    }
+  }
+  for (const e of edges) {
+    const a = e.a, b = e.b;
+    const dx = a.x - b.x, dy = a.y - b.y;
+    const d = Math.sqrt(dx * dx + dy * dy) || 0.01;
+    // Heavier collaborations pull harder, but sub-linearly so a single prolific
+    // pair cannot collapse its neighbourhood onto itself.
+    const f = (d * d / k) * (1 + Math.log(Math.min(e.w, 8)) * 0.45);
+    const fx = (dx / d) * f, fy = (dy / d) * f;
+    a.dx -= fx; a.dy -= fy; b.dx += fx; b.dy += fy;
+  }
+  // Weak pull to the centroid keeps separate components from drifting apart.
+  let cx = 0, cy = 0;
+  for (const a of nodes) { cx += a.x; cy += a.y; }
+  cx /= n; cy /= n;
+  for (const a of nodes) {
+    a.dx += (cx - a.x) * k * 0.012;
+    a.dy += (cy - a.y) * k * 0.012;
+  }
+  for (const a of nodes) {
+    if (a === M.drag) continue;
+    const disp = Math.hypot(a.dx, a.dy) || 1;
+    const lim = Math.min(disp, M.temp);
+    a.x += (a.dx / disp) * lim;
+    a.y += (a.dy / disp) * lim;
+  }
+  M.temp *= 0.965;
+  if (M.autofit) fitView();
+}
+
+function fitView() {
+  const cv = el("map");
+  const W = cv.clientWidth, H = cv.clientHeight;
+  if (!M.nodes.length || !W) return;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const a of M.nodes) {
+    x0 = Math.min(x0, a.x - a.r); y0 = Math.min(y0, a.y - a.r);
+    x1 = Math.max(x1, a.x + a.r); y1 = Math.max(y1, a.y + a.r);
+  }
+  const pad = 46;
+  const s = Math.min((W - pad * 2) / Math.max(x1 - x0, 1), (H - pad * 2) / Math.max(y1 - y0, 1));
+  M.scale = Math.max(0.25, Math.min(2.4, s));
+  M.ox = W / 2 - ((x0 + x1) / 2) * M.scale;
+  M.oy = H / 2 - ((y0 + y1) / 2) * M.scale;
+}
+
+function css(name) { return getComputedStyle(document.body).getPropertyValue(name).trim(); }
+
+function draw() {
+  const cv = el("map"), ctx = cv.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) {
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  ctx.save();
+  ctx.translate(M.ox, M.oy); ctx.scale(M.scale, M.scale);
+
+  const surface = css("--surface-1"), series = css("--series-1");
+  const axis = css("--axis"), ink = css("--text-primary"), muted = css("--muted");
+
+  const focus = M.pinned || M.hover;
+  const near = new Set();
+  if (focus) {
+    near.add(focus);
+    for (const e of M.edges) {
+      if (e.a === focus) near.add(e.b);
+      if (e.b === focus) near.add(e.a);
+    }
+  }
+
+  // links, recessive
+  for (const e of M.edges) {
+    const on = !focus || near.has(e.a) && near.has(e.b);
+    ctx.globalAlpha = on ? Math.min(0.16 + e.w * 0.09, 0.55) : 0.05;
+    ctx.strokeStyle = on && focus ? series : axis;
+    ctx.lineWidth = Math.min(0.6 + e.w * 0.35, 3) / M.scale;
+    ctx.beginPath(); ctx.moveTo(e.a.x, e.a.y); ctx.lineTo(e.b.x, e.b.y); ctx.stroke();
+  }
+
+  // nodes — 2px surface ring so overlapping marks stay separable
+  for (const a of M.nodes) {
+    const on = !focus || near.has(a);
+    ctx.globalAlpha = on ? 1 : 0.22;
+    ctx.beginPath(); ctx.arc(a.x, a.y, a.r, 0, Math.PI * 2);
+    ctx.fillStyle = series; ctx.fill();
+    ctx.lineWidth = 2 / M.scale; ctx.strokeStyle = surface; ctx.stroke();
+    if (a === focus) {
+      ctx.beginPath(); ctx.arc(a.x, a.y, a.r + 4 / M.scale, 0, Math.PI * 2);
+      ctx.lineWidth = 2 / M.scale; ctx.strokeStyle = series; ctx.stroke();
+    }
+  }
+
+  // Labels: hubs by default, the focused neighbourhood when something is focused.
+  // Biggest first, and anything whose box would collide with an already-placed
+  // label is dropped — an unreadable pile of overlapping names is worse than
+  // fewer names.
+  ctx.globalAlpha = 1;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  const fs = Math.max(9, 11 / M.scale);
+  ctx.font = `${fs}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+  const placed = [];
+  const candidates = M.nodes
+    .filter(a => (focus ? near.has(a) : a.lab))
+    .sort((a, b) => (b === focus) - (a === focus) || b.r - a.r);
+  for (const a of candidates) {
+    const y = a.y - a.r - fs * 0.6;
+    const w = ctx.measureText(a.n).width;
+    const box = [a.x - w / 2 - 2, y - fs / 2, a.x + w / 2 + 2, y + fs / 2];
+    if (placed.some(r => !(box[2] < r[0] || box[0] > r[2] || box[3] < r[1] || box[1] > r[3]))) continue;
+    placed.push(box);
+    ctx.lineWidth = 3.5 / M.scale; ctx.strokeStyle = surface;
+    ctx.strokeText(a.n, a.x, y);
+    ctx.fillStyle = a === focus ? ink : muted;
+    ctx.fillText(a.n, a.x, y);
+  }
+  ctx.restore();
+}
+
+function loop() {
+  if (M.temp > 0.4) tick();
+  draw();
+  M.raf = requestAnimationFrame(loop);
+}
+function startLoop() { if (!M.raf) loop(); }
+function stopLoop() { if (M.raf) { cancelAnimationFrame(M.raf); M.raf = null; } }
+
+function nodeAt(sx, sy) {
+  const x = (sx - M.ox) / M.scale, y = (sy - M.oy) / M.scale;
+  let best = null, bestD = Infinity;
+  for (const a of M.nodes) {
+    const d = Math.hypot(a.x - x, a.y - y);
+    if (d < a.r + 6 / M.scale && d < bestD) { best = a; bestD = d; }
+  }
+  return best;
+}
+
+/* map interaction */
+(function bindMap() {
+  const cv = el("map"), tip = el("tip");
+  let panning = false, lastX = 0, lastY = 0, moved = false;
+
+  cv.addEventListener("mousedown", e => {
+    const r = cv.getBoundingClientRect();
+    const hit = nodeAt(e.clientX - r.left, e.clientY - r.top);
+    moved = false;
+    if (hit) { M.drag = hit; M.autofit = false; M.temp = Math.max(M.temp, 6); }
+    else { panning = true; M.autofit = false; cv.classList.add("grabbing"); }
+    lastX = e.clientX; lastY = e.clientY;
+  });
+  window.addEventListener("mousemove", e => {
+    const r = cv.getBoundingClientRect();
+    if (M.drag) {
+      moved = true;
+      M.drag.x += (e.clientX - lastX) / M.scale;
+      M.drag.y += (e.clientY - lastY) / M.scale;
+      M.drag.vx = 0; M.drag.vy = 0;
+      lastX = e.clientX; lastY = e.clientY;
+      return;
+    }
+    if (panning) {
+      moved = true;
+      M.ox += e.clientX - lastX; M.oy += e.clientY - lastY;
+      lastX = e.clientX; lastY = e.clientY;
+      return;
+    }
+    if (el("view-map").hidden) return;
+    const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    const hit = inside ? nodeAt(e.clientX - r.left, e.clientY - r.top) : null;
+    M.hover = hit;
+    if (hit) {
+      const links = M.edges.filter(x => x.a === hit || x.b === hit).length;
+      tip.innerHTML = `<b>${esc(hit.n)}</b><br>${hit.p} paper${hit.p === 1 ? "" : "s"} · `
+        + `${links} link${links === 1 ? "" : "s"}`;
+      tip.style.opacity = 1;
+      tip.style.left = Math.min(e.clientX + 14, innerWidth - 200) + "px";
+      tip.style.top = (e.clientY - 46) + "px";
+    } else if (tip.style.opacity !== "0") { tip.style.opacity = 0; }
+  });
+  window.addEventListener("mouseup", e => {
+    if (M.drag && !moved) openFromMap(M.drag);
+    else if (panning && !moved) {
+      const r = cv.getBoundingClientRect();
+      const hit = nodeAt(e.clientX - r.left, e.clientY - r.top);
+      if (!hit) M.pinned = null;
+    }
+    M.drag = null; panning = false; cv.classList.remove("grabbing");
+  });
+  cv.addEventListener("wheel", e => {
+    e.preventDefault();
+    M.autofit = false;
+    const r = cv.getBoundingClientRect();
+    const mx = e.clientX - r.left, my = e.clientY - r.top;
+    const k = Math.exp(-e.deltaY * 0.0016);
+    const ns = Math.max(0.25, Math.min(4, M.scale * k));
+    M.ox = mx - (mx - M.ox) * (ns / M.scale);
+    M.oy = my - (my - M.oy) * (ns / M.scale);
+    M.scale = ns;
+  }, { passive: false });
+  cv.addEventListener("mouseleave", () => { tip.style.opacity = 0; });
+})();
+
+function openFromMap(node) {
+  if (M.mode === "people") { S.person = node.n; S.topic = null; }
+  else { S.topic = node.n; S.person = null; }
+  S.tab = "papers"; S.limit = 40; S.year = null;
+  setView("dashboard");
+  render();
+  document.querySelector("#view-dashboard .card:last-of-type").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function rebuildMap() { buildGraph(); startLoop(); }
+
+el("mapMode").addEventListener("change", e => {
+  M.mode = e.target.value;
+  const cfg = MODES[M.mode];
+  M.min = cfg.def; M.weight = cfg.wdef;
+  el("mapQ").value = "";                // a match from the other mode is meaningless here
+  fillSelects(); rebuildMap();
+});
+el("mapMin").addEventListener("change", e => { M.min = +e.target.value; rebuildMap(); });
+el("mapWeight").addEventListener("change", e => { M.weight = +e.target.value; rebuildMap(); });
+el("mapReheat").addEventListener("click", () => { buildGraph(); startLoop(); });
+el("mapQ").addEventListener("input", e => {
+  const q = e.target.value.toLowerCase().trim();
+  M.pinned = q ? M.nodes.find(n => n.n.toLowerCase().includes(q)) || null : null;
+  if (M.pinned) {                       // centre the match
+    const cv = el("map");
+    M.autofit = false;
+    M.ox = cv.clientWidth / 2 - M.pinned.x * M.scale;
+    M.oy = cv.clientHeight / 2 - M.pinned.y * M.scale;
+  }
+  draw();
+});
+
+/* view switching */
+function setView(v) {
+  el("view-dashboard").hidden = v !== "dashboard";
+  el("view-map").hidden = v !== "map";
+  document.querySelectorAll("#views button").forEach(b =>
+    b.setAttribute("aria-selected", b.dataset.view === v));
+  if (v === "map") {
+    if (!M.built) { M.built = true; fillSelects(); buildGraph(); }
+    startLoop();
+  } else {
+    stopLoop();
+    el("tip").style.opacity = 0;
+  }
+}
+el("views").addEventListener("click", e => {
+  const b = e.target.closest("button[data-view]");
+  if (b) setView(b.dataset.view);
+});
+addEventListener("resize", () => { if (!el("view-map").hidden) draw(); });
 
 drawChart();
 render();
