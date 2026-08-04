@@ -16,8 +16,10 @@ Stdlib only, same as the rest of the repo. No network access.
 from __future__ import annotations
 
 import argparse
+import collections
 import datetime as dt
 import glob
+import itertools
 import json
 import os
 import re
@@ -26,6 +28,18 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 ABSTRACT_CHARS = 600  # keep the page a reasonable size; full text lives in the vault
+
+# Papers with more authors than this are consortium/working-group outputs. Being
+# named on one says little about who actually works with whom, and each such
+# paper alone contributes up to n*(n-1)/2 edges — one 79-author paper is 3,081 —
+# which drowns the real collaboration structure. Excluded from co-authorship
+# edges only; the papers themselves are untouched everywhere else.
+CONSORTIUM_AUTHORS = 30
+
+# Edge weight = papers shared. Keeping only repeat collaborations is what makes
+# the graph readable: at weight 1 the co-author network is ~12k edges of hairball.
+MIN_COAUTHOR_WEIGHT = 2
+MIN_TOPIC_WEIGHT = 3
 
 
 def parse_note(path: str) -> tuple[dict, str]:
@@ -134,7 +148,43 @@ def collect(vault: str) -> dict:
             "u": fm.get("circle_url", ""),
         })
 
-    return {"papers": papers, "people": people, "topics": topics, "theses": theses}
+    return {"papers": papers, "people": people, "topics": topics, "theses": theses,
+            "graph": build_graphs(papers, people, topics)}
+
+
+def build_graphs(papers: list, people: list, topics: list) -> dict:
+    """Precompute the co-authorship and topic co-occurrence edge lists.
+
+    Edges are `[i, j, weight]` where i and j index into `people` / `topics` —
+    integer indices rather than names keep the payload small enough to embed.
+    """
+    person_at = {p["n"]: i for i, p in enumerate(people)}
+    topic_at = {t["n"]: i for i, t in enumerate(topics)}
+
+    coauthor: collections.Counter = collections.Counter()
+    consortium_skipped = 0
+    for paper in papers:
+        names = sorted({n for n in paper["a"] if n in person_at})
+        if len(names) > CONSORTIUM_AUTHORS:
+            consortium_skipped += 1
+            continue
+        for a, b in itertools.combinations(names, 2):
+            coauthor[(person_at[a], person_at[b])] += 1
+
+    cooccur: collections.Counter = collections.Counter()
+    for paper in papers:
+        names = sorted({t for t in paper["k"] if t in topic_at})
+        for a, b in itertools.combinations(names, 2):
+            cooccur[(topic_at[a], topic_at[b])] += 1
+
+    return {
+        "people": [[i, j, w] for (i, j), w in coauthor.items() if w >= MIN_COAUTHOR_WEIGHT],
+        "topics": [[i, j, w] for (i, j), w in cooccur.items() if w >= MIN_TOPIC_WEIGHT],
+        "authorCap": CONSORTIUM_AUTHORS,
+        "consortiumSkipped": consortium_skipped,
+        "minPeopleWeight": MIN_COAUTHOR_WEIGHT,
+        "minTopicWeight": MIN_TOPIC_WEIGHT,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -164,9 +214,13 @@ def main(argv: list[str] | None = None) -> int:
     with open(args.out, "w", encoding="utf-8") as f:
         f.write(html)
 
+    g = data["graph"]
     print(
         f"Wrote {args.out} — {len(data['papers'])} papers, {len(data['people'])} people, "
-        f"{len(data['topics'])} topics, {len(data['theses'])} theses "
+        f"{len(data['topics'])} topics, {len(data['theses'])} theses; "
+        f"map: {len(g['people'])} co-author edges "
+        f"({g['consortiumSkipped']} consortium papers excluded), "
+        f"{len(g['topics'])} topic edges "
         f"({os.path.getsize(args.out) // 1024} KB)"
     )
     return 0

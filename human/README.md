@@ -28,6 +28,10 @@ xdg-open human/index.html      # Linux
 A single self-contained file — the vault's data is embedded in it, so it works offline and can be
 emailed or dropped on a shared drive as-is.
 
+It has two views, switched at the top: **Dashboard** and **Map**.
+
+### Dashboard
+
 What you can do with it:
 
 - **Search everything at once** — titles, abstracts, venues, author names and topics. Press `/` to
@@ -41,6 +45,37 @@ What you can do with it:
 - **Switch tabs** to browse the 1,667 co-authors, 684 research topics, or the trainee theses (which
   link out to UBC cIRcle).
 - **Toggle light/dark** with the button in the corner; it follows your system theme by default.
+
+### Map
+
+The network view — the same thing Obsidian's graph view shows for `vault/`, but without needing
+Obsidian. Two modes:
+
+- **People** — who publishes with whom. Node size is papers with the lab; a link means two people
+  appear on that many papers together.
+- **Topics** — what gets studied together. Node size is how many lab papers carry that topic; a
+  link means two topics are tagged on the same papers.
+
+Drag to pan, scroll to zoom, drag a node to pull it out of the tangle, hover for counts, and click
+any node to jump back to the Dashboard with its papers already filtered. The search box finds and
+centres a node. "Re-layout" reshuffles the starting positions, which sometimes untangles a knot.
+
+**Two thresholds control what you see**, and both exist because the raw graph is unreadable:
+
+- *Minimum papers* — how many papers a person or topic needs before they appear at all.
+- *Minimum shared papers* — how strong a link has to be before it is drawn. At a threshold of 1 the
+  co-author network is about 12,000 links of solid hairball; requiring repeat collaboration is what
+  makes structure visible.
+
+**One judgment call worth knowing about.** Papers with more than 30 authors are excluded from the
+co-authorship links (16 papers). Being named on a consortium paper says very little about who
+actually works together, and each such paper contributes up to *n*(*n*−1)/2 links on its own — the
+79-author paper alone would add 3,081. Those papers are untouched everywhere else in the browser;
+only the map's links ignore them. The methodology note under the map states this on the page too,
+along with how many nodes were dropped for having no qualifying link.
+
+The map is a filtered view by design. The Dashboard's People and Topics tabs remain the complete,
+unfiltered list.
 
 ### Regenerating it
 
