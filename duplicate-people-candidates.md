@@ -4,10 +4,16 @@ Every one of the 1,667 person notes was walked and clustered by surname + given-
 
 Counts shown are `papers_with_wellington_lab` from each note's frontmatter, followed by the note's co-publication year span.
 
-**Summary:** 49 near-certain merge clusters (99 notes → 49 people, removing 50 spurious entries),
-plus a set of adjudicated cases resolved either by the lab owner or by reading the underlying
-papers. Three pairs remain open. The rest are listed by tier so the sweep is auditable: 26 probable
-pairs and 43 same-surname pairs that are probably genuinely different people.
+**Every candidate has now been adjudicated — nothing is left open.**
+
+**Result: 69 merge clusters covering 144 notes. Applying them removes 75 duplicate person notes,
+taking `vault/people/` from 1,667 to 1,592.** The full mapping is in
+[`people-merge-map.tsv`](people-merge-map.tsv) (`canonical`, `variant`, `variant_file`), validated
+so that every name resolves to a real file and no name appears in two clusters.
+
+Decisions came from three places: the name rules below, reading the underlying paper lists, and the
+lab owner for the cases neither could settle. Tiers 2 and 3 are retained as the audit trail of what
+was considered and rejected.
 
 
 ---
@@ -86,6 +92,9 @@ Where the name rules were inconclusive, the underlying paper lists were read. Ro
 | `Anna Wilkinson` (35p) vs `Amy Wilkinson` (2p) | **Two people — keep separate.** Amy's paediatric TBI serum-tau papers are a separate collaboration. **[lab-confirmed]** |
 | `David D. Howell` (1p, 2019) vs `David R. Howell` (1p, 2025) | **Two people — keep separate.** Both work in concussion/CTE, but the `D.` and `R.` middle initials are two different researchers. **[lab-confirmed]** |
 | `Rachel Zhao` (1p, 2018) + `Rui Qi Zhao` (1p, 2018) | **One person — merge.** One trainee recorded under both an English and a Chinese given name, on two different 2018 projects. **[lab-confirmed]** |
+| `Suzanne Vercauteren` (2p) + `Susan Vercauteren` (1p) | **One person — merge.** Companion *Critical Care* TBI-metabolomics papers from the same consortium. **[lab-confirmed]** |
+| `Elisa Wilson` (2p) + `Elizabeth Wilson` (1p) | **One person — merge.** Same consortium, companion papers. **[lab-confirmed]** |
+| `Daniele Imperiale` (2p) + `Daniela Imperiale` (1p) | **One person — merge.** Three versions of one 2025 neurofilament-quantification survey. **[lab-confirmed]** |
 
 The `Chan` outcome is worth noting for anyone automating this later: three of the four variants
 merge, but the conflicting-middle-initial rule was right about `Jennifer A. Chan`. Name evidence
@@ -129,23 +138,11 @@ counts below as a floor, not a complete census.
 
 ---
 
-## Still open — awaiting a decision
-
-Three pairs where the paper evidence points one way but is not conclusive on its own. My reading is
-given for each; none has been confirmed.
-
-| Pair | Evidence | My reading |
-|---|---|---|
-| `Suzanne Vercauteren` (2p, 2025) vs `Susan Vercauteren` (1p, 2023) | Suzanne is on the 2025 *Critical Care* TBI-metabolomics paper; Susan on the 2023 companion study from the same consortium | Same person |
-| `Elisa Wilson` (2p, 2018–2023) vs `Elizabeth Wilson` (1p, 2025) | Elisa on the 2023 metabolomics paper + 2018 CTBIRC consortium paper; Elizabeth on the 2025 companion | Same person |
-| `Daniele Imperiale` (2p) vs `Daniela Imperiale` (1p) | All three papers are versions of one 2025 international neurofilament-quantification survey | Same person, spelled inconsistently across records |
-
----
-
-## Tier 2 — probable duplicates, need a human call
+## Tier 2 — probable duplicates (audit trail)
 
 Given names differ but one is a short form, an ambiguous initial, or a near-identical spelling.
-The `Chan` and `Martens` rows below are already settled in the verified section above.
+**Every row here is now resolved in Adjudicated cases above** — this table is retained only to show
+what the name rules flagged before the evidence and the lab owner settled them.
 
 | Name A | Name B | Why flagged |
 |---|---|---|
@@ -178,9 +175,13 @@ The `Chan` and `Martens` rows below are already settled in the verified section 
 
 ---
 
-## Tier 3 — same surname, flagged but probably DIFFERENT people
+## Tier 3 — same surname, adjudicated as DIFFERENT people (audit trail)
 
-Listed for completeness so the sweep is auditable. Conflicting middle initials are the strongest in-name signal of two distinct humans; the rest merely share a first initial.
+Listed for completeness so the sweep is auditable. Conflicting middle initials proved to be the
+strongest in-name signal of two distinct humans and were never once overturned; the rest merely
+share a first initial. Note the handful of rows here that the evidence *did* overturn — `Mike`/
+`Michael Carr`, `Tom`/`Thomas Whyte` and similar nickname pairs — which are merged above. String
+similarity alone scores those below the threshold, so a nickname table is needed to catch them.
 
 | Name A | Name B | Why flagged |
 |---|---|---|
