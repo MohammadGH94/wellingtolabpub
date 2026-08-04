@@ -24,9 +24,22 @@ import json
 import os
 import re
 import sys
+from pathlib import Path
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+
+# Reuse the build's own merge-map loader rather than reimplementing the format,
+# so the browser and the vault can never disagree about what a merge means.
+sys.path.insert(0, ROOT)
+try:
+    from wellington_vault.build import load_merge_map
+    from wellington_vault.util import normalize_name
+except ImportError:                                    # pragma: no cover
+    load_merge_map = None
+    normalize_name = None
+
+DEFAULT_MERGE_MAP = os.path.join(ROOT, "people-merge-map.tsv")
 ABSTRACT_CHARS = 600  # keep the page a reasonable size; full text lives in the vault
 
 # Papers with more authors than this are consortium/working-group outputs. Being
@@ -84,10 +97,23 @@ def clean_abstract(text: str) -> str:
 
 
 def unlink(values) -> list[str]:
-    """`["[[Cheryl L. Wellington]]"]` -> `["Cheryl L. Wellington"]`."""
+    """`["[[Cheryl L. Wellington]]"]` -> `["Cheryl L. Wellington"]`.
+
+    Notes emit the aliased form `[[slug|Display Name]]` whenever the display
+    name does not survive slugification — diacritics stripped, non-ASCII hyphens
+    rewritten — so `José Rodríguez` is linked as `[[Jose Rodriguez|José
+    Rodríguez]]`. Take the alias: it is the real name, and it is what the person
+    and topic notes are keyed on. Missing this splits such people off as their
+    own entries and breaks click-through on them. `wikilink()` rewrites any `|`
+    inside the target, so the first one is always the alias separator.
+    """
     if not isinstance(values, list):
         return []
-    return [re.sub(r"^\[\[|\]\]$", "", v) for v in values]
+    out = []
+    for v in values:
+        v = re.sub(r"^\[\[|\]\]$", "", v)
+        out.append(v.split("|", 1)[1] if "|" in v else v)
+    return out
 
 
 def as_int(value, default=0) -> int:
@@ -97,7 +123,60 @@ def as_int(value, default=0) -> int:
         return default
 
 
-def collect(vault: str) -> dict:
+def people_from_papers(papers: list, notes: list) -> tuple[list, int]:
+    """Derive the people list from the papers rather than from `people/`.
+
+    Once merges are applied, per-note `papers_with_wellington_lab` counts cannot
+    simply be summed across a cluster: a paper that names two variants of one
+    person would be counted twice. Counting distinct papers per canonical name
+    is the only way to get this right, and it has the side benefit that the
+    number shown always matches what clicking the person actually lists.
+
+    `role` is carried over from the person notes, which is the only field the
+    papers do not contain. Person notes with no paper in `papers/` — their
+    papers were lost to filename collisions — are carried over as-is so nobody
+    silently disappears; the count of those is returned alongside.
+    """
+    role_of = {}
+    for note in notes:
+        if note["n"]:
+            role_of.setdefault(note["n"], note["r"])
+
+    agg: dict[str, dict] = {}
+    for paper in papers:
+        for name in paper["a"]:                        # already merged + deduped
+            entry = agg.setdefault(name, {"n": name, "p": 0, "years": []})
+            entry["p"] += 1
+            if paper["y"]:
+                entry["years"].append(paper["y"])
+
+    people = []
+    for name, entry in agg.items():
+        years = entry["years"]
+        people.append({
+            "n": name,
+            "r": role_of.get(name, "co-author"),
+            "p": entry["p"],
+            "f": str(min(years)) if years else "",
+            "l": str(max(years)) if years else "",
+        })
+
+    carried = [n for n in notes if n["n"] and n["n"] not in agg]
+    people.extend(carried)
+    people.sort(key=lambda p: p["n"])
+    return people, len(carried)
+
+
+def collect(vault: str, merge_map: dict | None = None) -> dict:
+    merge_map = merge_map or {}
+
+    def canonical(name: str) -> str:
+        if not merge_map:
+            return name
+        return (merge_map.get(name)
+                or (normalize_name and merge_map.get(normalize_name(name)))
+                or name)
+
     papers = []
     for path in sorted(glob.glob(os.path.join(vault, "papers", "*.md"))):
         fm, body = parse_note(path)
@@ -110,21 +189,25 @@ def collect(vault: str) -> dict:
             "oa": fm.get("open_access") == "true",
             "c": as_int(fm.get("cited_by_count")),
             "r": fm.get("wellington_role", ""),
-            "a": unlink(fm.get("authors", [])),
+            # Fold merged variants together, then drop repeats: a paper can name
+            # the same person twice once merges apply (consortium records list
+            # some people individually and again as group members).
+            "a": list(dict.fromkeys(canonical(n) for n in unlink(fm.get("authors", [])))),
             "k": unlink(fm.get("topics", [])),
             "ab": clean_abstract(abstract.group(1))[:ABSTRACT_CHARS] if abstract else "",
         })
 
-    people = []
+    note_people = []
     for path in sorted(glob.glob(os.path.join(vault, "people", "*.md"))):
         fm, _ = parse_note(path)
-        people.append({
-            "n": fm.get("name", ""),
+        note_people.append({
+            "n": canonical(fm.get("name", "")),
             "r": fm.get("role", ""),
             "p": as_int(fm.get("papers_with_wellington_lab")),
             "f": fm.get("first_co_pub_year", ""),
             "l": fm.get("last_co_pub_year", ""),
         })
+    people, carried = people_from_papers(papers, note_people)
 
     topics = []
     for path in sorted(glob.glob(os.path.join(vault, "topics", "*.md"))):
@@ -149,7 +232,8 @@ def collect(vault: str) -> dict:
         })
 
     return {"papers": papers, "people": people, "topics": topics, "theses": theses,
-            "graph": build_graphs(papers, people, topics)}
+            "graph": build_graphs(papers, people, topics),
+            "_notePeople": len(note_people), "_carried": carried}
 
 
 def build_graphs(papers: list, people: list, topics: list) -> dict:
@@ -193,6 +277,12 @@ def main(argv: list[str] | None = None) -> int:
                         help="Vault directory to read. (default: %(default)s)")
     parser.add_argument("--out", default=os.path.join(HERE, "index.html"),
                         help="HTML file to write. (default: %(default)s)")
+    parser.add_argument("--merge-map", default=DEFAULT_MERGE_MAP,
+                        help="TSV of curated variant→canonical author-name merges, "
+                             "the same file the vault build uses. (default: %(default)s)")
+    parser.add_argument("--no-merge-map", action="store_true",
+                        help="Show people exactly as the vault has them, duplicates "
+                             "and all.")
     args = parser.parse_args(argv)
 
     if not os.path.isdir(os.path.join(args.vault, "papers")):
@@ -200,10 +290,24 @@ def main(argv: list[str] | None = None) -> int:
               file=sys.stderr)
         return 2
 
-    data = collect(args.vault)
+    merge_map = {}
+    if not args.no_merge_map:
+        if load_merge_map is None:
+            print("WARNING: wellington_vault not importable; merges not applied.",
+                  file=sys.stderr)
+        else:
+            merge_map = load_merge_map(Path(args.merge_map))
+            if not merge_map:
+                print(f"No merge map at {args.merge_map}; showing people as-is.",
+                      file=sys.stderr)
+
+    data = collect(args.vault, merge_map=merge_map)
     if not data["papers"]:
         print(f"ERROR: {args.vault}/papers is empty.", file=sys.stderr)
         return 2
+
+    note_people = data.pop("_notePeople")
+    carried = data.pop("_carried")
 
     template = open(os.path.join(HERE, "_template.html"), encoding="utf-8").read()
     # `</script>` inside JSON would close the host <script> tag early.
@@ -223,6 +327,12 @@ def main(argv: list[str] | None = None) -> int:
         f"{len(g['topics'])} topic edges "
         f"({os.path.getsize(args.out) // 1024} KB)"
     )
+    if merge_map:
+        print(
+            f"  people: {len(data['people'])} shown, counted from the papers so merged "
+            f"clusters are not double-counted (vault has {note_people} person notes; "
+            f"{carried} note(s) carried over with no paper in papers/)."
+        )
     return 0
 
 

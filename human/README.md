@@ -42,7 +42,7 @@ What you can do with it:
 - **Click any paper** to expand its abstract, full author list, topics and DOI link.
 - **Click any author or topic** to pivot the paper list onto them — this is how you walk the
   co-author network without opening Obsidian.
-- **Switch tabs** to browse the 1,667 co-authors, 684 research topics, or the trainee theses (which
+- **Switch tabs** to browse the ~1,600 co-authors, 684 research topics, or the trainee theses (which
   link out to UBC cIRcle).
 - **Toggle light/dark** with the button in the corner; it follows your system theme by default.
 
@@ -145,20 +145,29 @@ git commit -am "Refresh vault and browser" && git push
 ```
 
 **It is public.** Everything on the page is already-published scholarly metadata from OpenAlex and
-UBC cIRcle, but a deployment does put 1,667 named co-authors and a citation snapshot on an
+UBC cIRcle, but a deployment does put ~1,600 named co-authors and a citation snapshot on an
 open URL. Citation counts in particular are frozen at build time, so date the page or refresh it on
 a schedule if people are going to cite what they see.
 
 ---
 
-## Two things to know about the data
+## Three things to know about the data
 
 **Citation counts are a snapshot.** They were true at vault-build time and drift upward
 continuously. Re-run the build for current numbers.
 
-**Some people appear more than once.** OpenAlex sometimes files one researcher under several author
-IDs, so the co-author count is inflated — 1,667 notes describe roughly 1,592 people. See
-`duplicate-people.md`. This affects the People tab and the author lists, not the publication count.
+**Duplicate people are merged here.** OpenAlex files some researchers under several author IDs,
+which would show one person several times. `build_human.py` applies `people-merge-map.tsv` — the
+same file the vault build uses — so the browser shows 1,599 people rather than the vault's 1,667
+notes. Pass `--no-merge-map` to see it unmerged.
+
+Because of that, **paper counts here are counted from the papers, not read from the person notes**.
+Summing a merged cluster's note counts would double-count any paper naming two variants of the same
+person, and it also means the number shown always matches what clicking that person lists. A
+handful of people can therefore differ by one or two from their `vault/people/` note.
+
+Coverage is not complete: duplicates whose names share nothing — an English and a transliterated
+given name, say — cannot be found from names alone. See `duplicate-people.md`.
 
 ---
 
