@@ -6,7 +6,7 @@ Counts shown are `papers_with_wellington_lab` from each note's frontmatter, foll
 
 **Summary:** 49 near-certain merge clusters (99 notes → 49 people, removing 50 spurious entries),
 plus a set of adjudicated cases resolved either by the lab owner or by reading the underlying
-papers. Five pairs remain open. The rest are listed by tier so the sweep is auditable: 26 probable
+papers. Three pairs remain open. The rest are listed by tier so the sweep is auditable: 26 probable
 pairs and 43 same-surname pairs that are probably genuinely different people.
 
 
@@ -45,7 +45,7 @@ One name is a strict extension or abbreviation of the other: a middle name/initi
 | 25 | **John Tzartos** (2p, 2025–2025) | `John S. Tzartos` | 1 | 2025–2025 |
 | 26 | **Juan Fortea** (2p, 2025–2025) | `Juan M. Fortea` | 1 | 2025–2025 |
 | 27 | **K. Rockwood** (2p, 2024–2025) | `Kenneth Rockwood` | 1 | 2024–2024 |
-| 28 | **Kristina Martens** (2p, 2015–2017) | `Kristina M. Martens` | 1 | 2016–2016 |
+| 28 | ~~**Kristina Martens** (2p, 2015–2017) | `Kristina M. Martens`~~ | 1 | 2016–2016 |<br>*superseded: merge both into `Kris M. Martens` — see Adjudicated cases* |
 | 29 | **Michael D. Hill** (2p, 2024–2025) | `M Hill` | 1 | 2025–2025 |
 | 30 | **M. Natasha Rajah** (2p, 2024–2025) | `Maria Natasha Rajah` | 1 | 2024–2024 |
 | 31 | **Natalie A. Phillips** (2p, 2024–2025) | `Natalie Phillips` | 1 | 2024–2024 |
@@ -85,6 +85,7 @@ Where the name rules were inconclusive, the underlying paper lists were read. Ro
 | `Sonny Thiara` (12p) + `Sharanjit Thiara` (1p) | **One person — merge.** `Sonny` is the short form; both are UBC critical-care neuroprognostication. **[lab-confirmed]** |
 | `Anna Wilkinson` (35p) vs `Amy Wilkinson` (2p) | **Two people — keep separate.** Amy's paediatric TBI serum-tau papers are a separate collaboration. **[lab-confirmed]** |
 | `David D. Howell` (1p, 2019) vs `David R. Howell` (1p, 2025) | **Two people — keep separate.** Both work in concussion/CTE, but the `D.` and `R.` middle initials are two different researchers. **[lab-confirmed]** |
+| `Rachel Zhao` (1p, 2018) + `Rui Qi Zhao` (1p, 2018) | **One person — merge.** One trainee recorded under both an English and a Chinese given name, on two different 2018 projects. **[lab-confirmed]** |
 
 The `Chan` outcome is worth noting for anyone automating this later: three of the four variants
 merge, but the conflicting-middle-initial rule was right about `Jennifer A. Chan`. Name evidence
@@ -94,6 +95,15 @@ Taken together with `Howell`, the confirmed decisions leave the conflicting-midd
 undefeated: every case where two notes shared a given name and surname but disagreed on the middle
 initial turned out to be two different people, even when both worked the same narrow field. Shared
 research line is *not* sufficient grounds to merge across a middle-initial conflict.
+
+**`Zhao` exposes the hard limit of this whole approach.** `Rachel` and `Rui Qi` are the same
+trainee under an English and a Chinese given name — two strings with nothing in common but the
+surname and, by pure coincidence, a shared first letter. That coincidence is the only reason the
+pair entered the candidate set at all. Had the adopted name been `Grace`, no name-based rule of any
+sophistication would have surfaced it, and nothing in the notes themselves would betray the
+duplicate: the two 2018 papers are on unrelated subjects. **This class of duplicate is
+undetectable from names alone and can only be closed by a roster of lab members.** Treat the
+counts below as a floor, not a complete census.
 
 ### Settled by reading the papers
 
@@ -121,14 +131,13 @@ research line is *not* sufficient grounds to merge across a middle-initial confl
 
 ## Still open — awaiting a decision
 
-Four pairs where the paper evidence points one way but is not conclusive on its own. My reading is
+Three pairs where the paper evidence points one way but is not conclusive on its own. My reading is
 given for each; none has been confirmed.
 
 | Pair | Evidence | My reading |
 |---|---|---|
 | `Suzanne Vercauteren` (2p, 2025) vs `Susan Vercauteren` (1p, 2023) | Suzanne is on the 2025 *Critical Care* TBI-metabolomics paper; Susan on the 2023 companion study from the same consortium | Same person |
 | `Elisa Wilson` (2p, 2018–2023) vs `Elizabeth Wilson` (1p, 2025) | Elisa on the 2023 metabolomics paper + 2018 CTBIRC consortium paper; Elizabeth on the 2025 companion | Same person |
-| `Rachel Zhao` (1p, 2018) vs `Rui Qi Zhao` (1p, 2018) | Same year, same lab, different subjects: Iba1 microglia image analysis vs small-molecule ABCA1/apoE inducers | Genuinely unsure — could be one trainee under an English and a Chinese given name |
 | `Daniele Imperiale` (2p) vs `Daniela Imperiale` (1p) | All three papers are versions of one 2025 international neurofilament-quantification survey | Same person, spelled inconsistently across records |
 
 ---
