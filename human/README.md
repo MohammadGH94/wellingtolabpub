@@ -222,8 +222,13 @@ continuously. Re-run the build for current numbers.
 
 **Duplicate people are merged here.** OpenAlex files some researchers under several author IDs,
 which would show one person several times. `build_human.py` applies `people-merge-map.tsv` — the
-same file the vault build uses — so the browser shows 1,599 people rather than the vault's 1,667
+same file the vault build uses — so the browser shows 1,589 people rather than the vault's 1,667
 notes. Pass `--no-merge-map` to see it unmerged.
+
+It also settles on **one spelling per person**. OpenAlex spells the same name differently across
+papers — `Ramon Diaz‐Arrastia` on six and `Ramon Diaz Arrastia` on a seventh — and a person is
+identified here by the note those links point at, not by how any one paper spelled them. The
+spelling shown is the one the most papers use. See `resolve_labels()` in `build_human.py`.
 
 Because of that, **paper counts here are counted from the papers, not read from the person notes**.
 Summing a merged cluster's note counts would double-count any paper naming two variants of the same

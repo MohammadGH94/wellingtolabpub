@@ -77,7 +77,7 @@ OpenAlex sometimes files one researcher under several author IDs, which would
 produce several person notes for the same human. The build collapses display-name
 variants per author ID, then applies `people-merge-map.tsv` — a curated list of
 merges that author IDs cannot express, since from OpenAlex's side those records
-are different authors. It covers 69 people split across 144 notes.
+are different authors. It covers 72 people split across 150 notes.
 
 The map is human-maintained; see [`human/duplicate-people.md`](human/duplicate-people.md)
 for the finished list, how each call was decided, and how to add to it.

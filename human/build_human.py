@@ -33,10 +33,12 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 try:
     from wellington_vault.build import load_merge_map
+    from wellington_vault.notes import person_filename
     from wellington_vault.util import normalize_name
 except ImportError:                                    # pragma: no cover
     load_merge_map = None
     normalize_name = None
+    person_filename = None
 
 DEFAULT_MERGE_MAP = os.path.join(ROOT, "people-merge-map.tsv")
 ABSTRACT_CHARS = 600  # keep the page a reasonable size; full text lives in the vault
@@ -173,23 +175,66 @@ def clean_abstract(text: str) -> str:
     return "\n".join(lines).strip()
 
 
-def unlink(values) -> list[str]:
-    """`["[[Cheryl L. Wellington]]"]` -> `["Cheryl L. Wellington"]`.
+def link_parts(value: str) -> tuple[str, str]:
+    """`"[[Jose Rodriguez|José Rodríguez]]"` -> `("Jose Rodriguez", "José Rodríguez")`.
 
     Notes emit the aliased form `[[slug|Display Name]]` whenever the display
     name does not survive slugification — diacritics stripped, non-ASCII hyphens
-    rewritten — so `José Rodríguez` is linked as `[[Jose Rodriguez|José
-    Rodríguez]]`. Take the alias: it is the real name, and it is what the person
-    and topic notes are keyed on. Missing this splits such people off as their
-    own entries and breaks click-through on them. `wikilink()` rewrites any `|`
-    inside the target, so the first one is always the alias separator.
+    rewritten. `wikilink()` rewrites any `|` inside the target, so the first one
+    is always the alias separator.
+
+    The target is the note's filename, and so the vault's identity for that
+    person. The alias is only how one paper happened to spell them.
+    """
+    v = re.sub(r"^\[\[|\]\]$", "", value.strip())
+    target, _, alias = v.partition("|")
+    return target.strip(), (alias.strip() or target.strip())
+
+
+def link_pairs(values) -> list[tuple[str, str]]:
+    return [link_parts(v) for v in values] if isinstance(values, list) else []
+
+
+def resolve_labels(link_lists) -> dict[str, str]:
+    """Settle on one display name per wikilink target.
+
+    OpenAlex spells the same person differently across papers — "Ramon
+    Diaz‐Arrastia" on six of them and "Ramon Diaz Arrastia" on a seventh — and
+    the notes carry each spelling through as that link's alias. Keying people on
+    the alias therefore splits one person into several, each with a share of the
+    papers. Keying on the target does not, because the vault already resolved
+    every spelling to a single person note; the split was only ever the
+    browser's.
+
+    Of the spellings pointing at one target, take the one the most papers use.
+    Break ties toward the spelling carrying diacritics, since the plain form is
+    the lossy one, then toward the longer, then alphabetically so that a rebuild
+    from unchanged notes produces an unchanged page.
+    """
+    seen: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
+    for pairs in link_lists:
+        for target, alias in pairs:
+            seen[target][alias] += 1
+    return {
+        target: sorted(aliases, key=lambda a: (-aliases[a],
+                                               -sum(ord(c) > 127 for c in a),
+                                               -len(a), a))[0]
+        for target, aliases in seen.items()
+    }
+
+
+def unlink(values, labels: dict | None = None) -> list[str]:
+    """`["[[Cheryl L. Wellington]]"]` -> `["Cheryl L. Wellington"]`.
+
+    With `labels` from `resolve_labels()`, every link to a target resolves to
+    that target's one agreed display name. Without it, each link keeps its own
+    alias — which is what splits people; see `resolve_labels()`.
     """
     if not isinstance(values, list):
         return []
     out = []
-    for v in values:
-        v = re.sub(r"^\[\[|\]\]$", "", v)
-        out.append(v.split("|", 1)[1] if "|" in v else v)
+    for target, alias in link_pairs(values):
+        out.append(labels.get(target, alias) if labels else alias)
     return out
 
 
@@ -247,16 +292,27 @@ def people_from_papers(papers: list, notes: list) -> tuple[list, int]:
 def collect(vault: str, merge_map: dict | None = None) -> dict:
     merge_map = merge_map or {}
 
+    parsed = [parse_note(p)
+              for p in sorted(glob.glob(os.path.join(vault, "papers", "*.md")))]
+
+    # Settle display names before counting anything — see resolve_labels().
+    author_labels = resolve_labels(link_pairs(fm.get("authors", [])) for fm, _ in parsed)
+    topic_labels = resolve_labels(link_pairs(fm.get("topics", [])) for fm, _ in parsed)
+
+    def relabel(name: str) -> str:
+        """Re-resolve a name through the labels, since the merge map names people
+        by one particular spelling and that may not be the one that won."""
+        return author_labels.get(person_filename(name), name) if person_filename else name
+
     def canonical(name: str) -> str:
         if not merge_map:
             return name
-        return (merge_map.get(name)
-                or (normalize_name and merge_map.get(normalize_name(name)))
-                or name)
+        return relabel(merge_map.get(name)
+                       or (normalize_name and merge_map.get(normalize_name(name)))
+                       or name)
 
     papers = []
-    for path in sorted(glob.glob(os.path.join(vault, "papers", "*.md"))):
-        fm, body = parse_note(path)
+    for fm, body in parsed:
         abstract = re.search(r"## Abstract\n(.+?)(?:\n##|\Z)", body, re.S)
         title = fm.get("title", "")
         work_type = fm.get("work_type", "")
@@ -273,16 +329,20 @@ def collect(vault: str, merge_map: dict | None = None) -> dict:
             # Fold merged variants together, then drop repeats: a paper can name
             # the same person twice once merges apply (consortium records list
             # some people individually and again as group members).
-            "a": list(dict.fromkeys(canonical(n) for n in unlink(fm.get("authors", [])))),
-            "k": unlink(fm.get("topics", [])),
+            "a": list(dict.fromkeys(
+                canonical(n) for n in unlink(fm.get("authors", []), author_labels))),
+            "k": unlink(fm.get("topics", []), topic_labels),
             "ab": clean_abstract(abstract.group(1))[:ABSTRACT_CHARS] if abstract else "",
         })
 
     note_people = []
     for path in sorted(glob.glob(os.path.join(vault, "people", "*.md"))):
         fm, _ = parse_note(path)
+        # The filename is the target every paper links to, so it — not the
+        # note's own `name:` — is what lines this note up with the papers.
+        target = os.path.splitext(os.path.basename(path))[0]
         note_people.append({
-            "n": canonical(fm.get("name", "")),
+            "n": canonical(author_labels.get(target, fm.get("name", ""))),
             "r": fm.get("role", ""),
             "p": as_int(fm.get("papers_with_wellington_lab")),
             "f": fm.get("first_co_pub_year", ""),
