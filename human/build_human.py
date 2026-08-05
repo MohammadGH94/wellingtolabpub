@@ -16,6 +16,7 @@ Stdlib only, same as the rest of the repo. No network access.
 from __future__ import annotations
 
 import argparse
+import collections
 import datetime as dt
 import glob
 import json
@@ -90,46 +91,74 @@ def parse_note(path: str) -> tuple[dict, str]:
 
 # Conference abstracts carry a session code from the meeting programme:
 # "P4-218:", "O1-03-07", "S3-02-03:", "PL-04-01:", "[P3–182]:", "IC-P1", "LB-P4",
-# "Abstract 245:", "0404 ", "73 (13B) ", "A.1 ". Hyphens vary (ASCII, non-breaking,
-# en/em dash) because the source records are inconsistent.
+# "Abstract 245:", "0404 ", "2.16 ", "73 (13B) ", "A.1 ". Hyphens vary (ASCII,
+# non-breaking, en/em dash) because the source records are inconsistent.
 ABSTRACT_CODE = re.compile(r"""^\s*(
     \[?[A-Z]{1,2}[‐‑–—-]?\d{1,2}[‐‑–—.\- ]\s?\d   # P1-196, O1-03-07, S3-02-03, PL-04-01
   | (IC|LB|DT)[‐‑–—-]P?\d                          # IC-P1, LB-P4, DT-01
   | abstract\s+\d+                                 # Abstract 245:
-  | \d{3,4}\s+\w                                   # 0404 Sleep Characterization
+  | \d{1,4}[. ]\d{1,3}\s+\w                        # 2.16 Blood biomarkers, 0404 Sleep
   | \d{1,3}\s*\(\d+[A-Za-z]?\)                     # 73 (13B) Sex, puberty
   | [A-Z]\.\d+\s                                   # A.1 Repurposing Ambroxol
 )""", re.I | re.X)
 
-# Preprint servers legitimately carry shouty titles, so the all-caps signal must
-# not apply to them.
+# DOI shapes that identify a record as a meeting abstract rather than an article.
+# Each was checked against this vault: every match has at most two citations,
+# while the regular articles in the same journals sit in the hundreds.
+ABSTRACT_DOI = re.compile(r"""(
+    10\.1002/alz\.\d{6}\b        # Alzheimer's & Dementia supplement (articles use 4-5 digits)
+  | 10\.1002/alz\d+_\d+          # its 2025 supplement form, alz70856_102379
+  | 10\.1136/bjsports-\d+-concussion\.
+  | 10\.58530/                    # ISMRM proceedings
+  | 10\.1182/blood-\d{4}-\d+     # ASH meeting abstract (articles are blood.2023019876)
+  | /vkaf\d+\.\d+$               # Journal of Immunology meeting supplement
+  | \d+s\d{3}$                    # journal supplement suffix, ...05201s416
+)""", re.X)
+
+# Supplementary material deposited beside a paper — not a publication of its own.
+SUPPLEMENT_DOI = re.compile(r"10\.6084/")           # Figshare
+
+# Editorial furniture and peer-review artefacts.
+NON_ARTICLE_TITLE = re.compile(r"^\s*(author response|preface|hotspots)\b", re.I)
+
 PREPRINT_TYPES = frozenset({"preprint", "posted-content"})
 
 
-def is_abstract(title: str, work_type: str) -> bool:
-    """Best-effort: does this record look like a conference abstract?
+def record_kind(title: str, work_type: str, venue: str, doi: str) -> str:
+    """Classify a record as "paper" or the kind of non-paper it is.
 
-    OpenAlex types these as ordinary articles, so there is no field to read —
-    only the shape of the title. Two signals, both chosen for precision, because
-    wrongly hiding a real paper is worse than leaving an abstract in view:
+    OpenAlex types nearly all of these as ordinary articles, so there is no
+    field to read — the evidence is in the DOI, the venue and the title. Only
+    "paper" is counted as a publication by default.
 
-      1. A meeting session code at the start of the title.
-      2. An all-capitals title, which is how several proceedings render them —
-         but never for a preprint, where shouty titles are just a style.
+    Returns one of: "paper", "abstract", "supplement", "other".
 
-    This under-catches by design. Abstracts published in a supplement without a
-    session code in the title are indistinguishable here from short papers, and
-    stay counted as publications.
+    Rules are chosen for precision, because wrongly demoting a real paper is
+    worse than leaving a stray abstract in the count. Every rule was checked
+    against this vault: nothing demoted has more than two citations, while the
+    genuine articles in the same journals have hundreds.
     """
-    title = title or ""
+    title, doi = title or "", doi or ""
+    work_type, venue = (work_type or "").lower(), venue or ""
+
+    if SUPPLEMENT_DOI.search(doi) or title.lower().startswith("additional file"):
+        return "supplement"
+    if work_type == "peer-review" or NON_ARTICLE_TITLE.match(title):
+        return "other"
+    if ABSTRACT_DOI.search(doi):
+        return "abstract"
+    if venue.startswith("Proceedings on CD-ROM") or "Supplements" in venue:
+        return "abstract"
     if ABSTRACT_CODE.match(title):
-        return True
+        return "abstract"
+    # All-capitals titles are how several proceedings render abstracts — but a
+    # preprint server is just a house style, so never there.
     letters = [c for c in title if c.isalpha()]
     if (len(letters) > 20
             and sum(c.isupper() for c in letters) / len(letters) > 0.9
-            and (work_type or "").lower() not in PREPRINT_TYPES):
-        return True
-    return False
+            and work_type not in PREPRINT_TYPES):
+        return "abstract"
+    return "paper"
 
 
 def clean_abstract(text: str) -> str:
@@ -230,9 +259,10 @@ def collect(vault: str, merge_map: dict | None = None) -> dict:
         abstract = re.search(r"## Abstract\n(.+?)(?:\n##|\Z)", body, re.S)
         title = fm.get("title", "")
         work_type = fm.get("work_type", "")
+        kind = record_kind(title, work_type, fm.get("venue", ""), fm.get("doi", ""))
         papers.append({
             "t": title,
-            "abs": is_abstract(title, work_type),
+            "kind": kind,
             "y": as_int(fm.get("year"), 0) or None,
             "v": fm.get("venue", ""),
             "doi": fm.get("doi", ""),
@@ -337,10 +367,12 @@ def main(argv: list[str] | None = None) -> int:
     with open(args.out, "w", encoding="utf-8") as f:
         f.write(html)
 
-    abstracts = sum(1 for p in data["papers"] if p["abs"])
+    kinds = collections.Counter(p["kind"] for p in data["papers"])
     print(
-        f"Wrote {args.out} — {len(data['papers'])} papers "
-        f"({abstracts} look like conference abstracts), {len(data['people'])} people, "
+        f"Wrote {args.out} — {len(data['papers'])} records "
+        f"({kinds['paper']} papers, {kinds['abstract']} abstracts, "
+        f"{kinds['supplement']} supplements, {kinds['other']} other), "
+        f"{len(data['people'])} people, "
         f"{len(data['topics'])} topics, {len(data['theses'])} theses "
         f"({os.path.getsize(args.out) // 1024} KB)"
     )

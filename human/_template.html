@@ -115,6 +115,7 @@
   .row-t:hover { color: var(--series-1); }
   .row-m { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
   .row-m .yr { font-variant-numeric: tabular-nums; }
+  .kindpill { border-color: var(--series-1); color: var(--series-1); }
   .pill { display: inline-block; border: 1px solid var(--border); border-radius: 5px; padding: 0 5px; margin-left: 6px; font-size: 11px; color: var(--text-secondary); }
   .detail { margin-top: 10px; padding: 12px; background: var(--plane); border-radius: 8px; font-size: 13.5px; }
   .detail p { margin: 0 0 8px; color: var(--text-secondary); }
@@ -304,10 +305,11 @@ const BUILT = "/*__BUILT__*/";
 
 const S = { tab: "papers", q: "", role: "", sort: "year", oa: false,
             year: null, person: null, topic: null, limit: 40, open: new Set(),
-            // Conference abstracts are ~12% of the record and carry almost no
-            // citations, so counting them alongside papers distorts every total
-            // on the page. Excluded by default; the toggle puts them back.
-            hideAbs: true };
+            // A quarter of the records are not papers: conference abstracts,
+            // supplementary files deposited beside a paper, and editorial
+            // furniture. They hold almost no citations but inflate every count
+            // on the page, so they are excluded by default.
+            papersOnly: true };
 
 /* ── scope ────────────────────────────────────────────────────────────────
    Everything on the page — totals, chart, people, topics, both graphs — is
@@ -315,11 +317,16 @@ const S = { tab: "papers", q: "", role: "", sort: "year", oa: false,
    cannot leave one view disagreeing with another. Memoised per scope; there
    are only two. */
 const _scopes = {};
+// How many records of each non-paper kind, and what they are worth in citations.
+const KINDS = ["abstract", "supplement", "other"];
+const nonPaper = DATA.papers.filter(p => p.kind !== "paper");
+const KIND_N = Object.fromEntries(KINDS.map(k => [k, DATA.papers.filter(p => p.kind === k).length]));
+const NONPAPER_CITES = nonPaper.reduce((a, p) => a + p.c, 0);
 function scope() {
-  const key = S.hideAbs ? "papers" : "all";
+  const key = S.papersOnly ? "papers" : "all";
   if (_scopes[key]) return _scopes[key];
 
-  const papers = S.hideAbs ? DATA.papers.filter(p => !p.abs) : DATA.papers;
+  const papers = S.papersOnly ? DATA.papers.filter(p => p.kind === "paper") : DATA.papers;
   const roleOf = new Map(DATA.people.map(p => [p.n, p.r]));
 
   const agg = (field) => {
@@ -377,7 +384,6 @@ function scope() {
     topicEdges: edges("k", 0),
     byYear,
     citations: papers.reduce((a, p) => a + p.c, 0),
-    abstracts: DATA.papers.filter(p => p.abs).length,
   });
 }
 
@@ -506,6 +512,9 @@ function renderPapers() {
     meta.push(`${p.c} citation${p.c === 1 ? "" : "s"}`);
     let h = `<li><div class="row-t" data-open="${idx}">${esc(p.t)}</div>`
       + `<div class="row-m">` + meta.join(" · ")
+      + (p.kind !== "paper" ? `<span class="pill kindpill">${esc(
+            { abstract: "conference abstract", supplement: "supplementary file" }[p.kind] || "not an article"
+          )}</span>` : "")
       + (p.r ? `<span class="pill">${esc(p.r)}</span>` : "")
       + (p.oa ? `<span class="pill">open access</span>` : "")
       + `</div>`;
@@ -1095,22 +1104,31 @@ el("mapQ").addEventListener("input", e => {
 /* ---------- conference-abstract toggle ---------- */
 function syncAbsLabel() {
   const sc = scope();
-  el("absLabel").textContent = S.hideAbs
-    ? `Include ${sc.abstracts} conference abstracts`
-    : `${sc.abstracts} conference abstracts included`;
-  const cites = DATA.papers.reduce((a, p) => a + (p.abs ? p.c : 0), 0);
-  el("absNote").innerHTML = S.hideAbs
-    ? `Excluding ${sc.abstracts} records that look like conference abstracts — meeting `
-      + `submissions rather than peer-reviewed papers, holding ${cites} citations between them. `
-      + `They are spotted by the session code in the title (<code>P4&#8209;218:</code>, `
-      + `<code>S3&#8209;02&#8209;03:</code>) or an all-capitals title, so detection is `
-      + `deliberately conservative — an abstract without such a code stays counted.`
-    : `Counting all ${DATA.papers.length} records, including ${sc.abstracts} that look like `
-      + `conference abstracts. Those hold ${cites} citations between them, so they raise the `
-      + `publication count far more than any measure of impact.`;
+  const total = nonPaper.length;
+  const parts = [];
+  if (KIND_N.abstract) parts.push(`${KIND_N.abstract} conference abstracts`);
+  if (KIND_N.supplement) parts.push(`${KIND_N.supplement} supplementary files`);
+  if (KIND_N.other) parts.push(`${KIND_N.other} editorial or peer-review records`);
+  const list = parts.join(", ").replace(/, ([^,]*)$/, " and $1");
+
+  el("absLabel").textContent = S.papersOnly
+    ? `Include ${total} abstracts and other non-articles`
+    : `${total} abstracts and other non-articles included`;
+
+  el("absNote").innerHTML = S.papersOnly
+    ? `Counting ${sc.papers.length} peer-reviewed papers. Excluded: ${esc(list)} — `
+      + `${total} of ${DATA.papers.length} records, holding ${NONPAPER_CITES} citations between `
+      + `them against ${sc.citations.toLocaleString()} for the papers. They are identified by `
+      + `DOI shape (an Alzheimer's &amp; Dementia supplement is <code>alz.047179</code> where an `
+      + `article is <code>alz.12157</code>), by a session code in the title `
+      + `(<code>P4&#8209;218:</code>), or by an all-capitals title. Detection is deliberately `
+      + `conservative, so a few abstracts without any of those markers are still counted.`
+    : `Counting all ${DATA.papers.length} records, including ${esc(list)}. Those hold `
+      + `${NONPAPER_CITES} citations between them, so they raise the publication count far more `
+      + `than any measure of impact.`;
 }
 el("absToggle").addEventListener("change", e => {
-  S.hideAbs = !e.target.checked;
+  S.papersOnly = !e.target.checked;
   // Every total, the chart, both lists and the graph derive from the scope, so
   // all of them have to be rebuilt — not just the paper list.
   S.limit = 40; S.open.clear(); S.year = null;
