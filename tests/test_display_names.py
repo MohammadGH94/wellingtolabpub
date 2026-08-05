@@ -94,8 +94,44 @@ class ShippedPage(unittest.TestCase):
             raise unittest.SkipTest("no vault checked out")
         from build_human import DEFAULT_MERGE_MAP, collect
         from wellington_vault.build import load_merge_map
-        cls.data = collect(str(REPO / "vault"),
-                           merge_map=load_merge_map(Path(DEFAULT_MERGE_MAP)))
+        cls.merge_map = load_merge_map(Path(DEFAULT_MERGE_MAP))
+        cls.data = collect(str(REPO / "vault"), merge_map=cls.merge_map)
+
+    def test_no_displayed_name_is_a_merge_map_variant(self):
+        """Every merge in the file must have actually taken effect."""
+        import csv
+        with (REPO / "people-merge-map.tsv").open(encoding="utf-8") as fh:
+            variants = {r["variant"] for r in csv.DictReader(fh, delimiter="\t")}
+        shown = {p["n"] for p in self.data["people"]} & variants
+        self.assertEqual(shown, set(), "listed as a variant but still displayed")
+
+    def test_every_canonical_survives_the_spelling_vote(self):
+        """A canonical the papers out-vote splits its cluster instead of merging it.
+
+        `canonical()` lets the papers settle a spelling and then applies the map,
+        so a curated canonical only sticks if the vote cannot pull it back — that
+        is, if no paper spells that person differently, or the spelling they use
+        is itself listed as a variant. `Jens Kuhle` passes because `Jens Kühle`,
+        which four papers use, is a variant. `Elodie Bouaziz-Amar` did not: the
+        papers say `Élodie`, so the two spellings stayed two people.
+        """
+        import csv
+        from build_human import link_pairs, parse_note, resolve_labels
+        parsed = [parse_note(str(p))
+                  for p in sorted((REPO / "vault" / "papers").glob("*.md"))]
+        labels = resolve_labels(link_pairs(fm.get("authors", [])) for fm, _ in parsed)
+
+        from wellington_vault.notes import person_filename
+        with (REPO / "people-merge-map.tsv").open(encoding="utf-8") as fh:
+            rows = list(csv.DictReader(fh, delimiter="\t"))
+
+        overridden = []
+        for row in rows:
+            canonical = row["canonical"]
+            voted = labels.get(person_filename(canonical))
+            if voted and voted != canonical and voted not in self.merge_map:
+                overridden.append((canonical, voted))
+        self.assertEqual(overridden, [], "(canonical, what the papers display instead)")
 
     @staticmethod
     def key(name: str) -> str:

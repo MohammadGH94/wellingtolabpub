@@ -89,7 +89,7 @@ Where the name rules were inconclusive, the underlying paper lists were read. Ro
 
 | Cluster | Decision |
 |---|---|
-| `Jeniffer Chan` (15p) + `Jennifer Chan` (3p) + `Jennifer Y. Chan` (2p) | **One person — merge.** `Jeniffer` is a misspelling; the `Y.` initial is metadata noise. **[lab-confirmed]** |
+| `Jeniffer Chan` (15p) + `Jennifer Chan` (3p) + `Jennifer Y. Chan` (2p) | **One person — merge, as `Jennifer Chan`.** `Jeniffer` is a misspelling; the `Y.` initial is metadata noise. The cluster was first merged the other way round, under `Jeniffer Chan`, because that spelling had the most papers — corrected once the lab confirmed the typo. **[lab-confirmed]** |
 | `Jennifer A. Chan` (1p, 2008) | **Separate person — keep.** Despite sitting on the same GW3965/APP-PS1 abstract, the `A.` initial is a real distinct researcher. **[lab-confirmed]** |
 | `Kris M. Martens` (16p) + `Kristina M. Martens` (1p) + `Kristina Martens` (2p) | **All one person — merge all three.** The Aβ-oligomer-vaccination papers are the same researcher, not a namesake. **[lab-confirmed]** — this reverses the evidence reading, which had them as two people |
 | `Sonny Thiara` (12p) + `Sharanjit Thiara` (1p) | **One person — merge.** `Sonny` is the short form; both are UBC critical-care neuroprognostication. **[lab-confirmed]** |

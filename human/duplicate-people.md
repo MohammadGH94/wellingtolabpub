@@ -18,7 +18,7 @@ The **Decided by** column is `lab` where a lab member confirmed the call and `ev
 | **Emily B. Button** | `Emily Button` | 42 | evidence |
 | **Jennifer Cooper** | `Jennifer G Cooper`, `Jennifer G. Cooper`, `J. Cooper` | 39 | evidence |
 | **Neil R. Cashman** | `Neil Cashman` | 34 | evidence |
-| **Jeniffer Chan** | `Jennifer Chan`, `Jennifer Y. Chan` | 20 | lab |
+| **Jennifer Chan** | `Jeniffer Chan`, `Jennifer Y. Chan` | 20 | lab |
 | **Kris M. Martens** | `Kristina M. Martens`, `Kristina Martens` | 19 | lab |
 | **Catherine M. Cowan** | `Catherine Cowan` | 16 | evidence |
 | **Kevin Kang** | `Kevin H. Kang` | 16 | evidence |
@@ -135,14 +135,31 @@ The seventh is the exception that still needed a map row: `Peter Koertvelyessy` 
 they slugify to *different* files and the vault genuinely has two notes. Only a curated merge joins
 those.
 
-Two spelling calls the lab may want to overrule, since the rule picks whichever spelling the most
-papers use and that is not always the right one: **`Jens Kühle`** (4 papers) is displayed, though
-the Basel neurologist spells it *Kuhle*; and **`Jeniffer Chan`** (15 papers) is the canonical for
-that cluster, which looks like a typo for *Jennifer*. Both are one-line changes to
-`people-merge-map.tsv`.
+### When the commonest spelling is the wrong one
 
-`tests/test_display_names.py` covers this: over the whole vault, no two people may differ only by
-case, diacritics or punctuation, and every unmerged person's paper count is re-derived
+A vote picks the most frequent spelling, not the correct one, and twice it picked a typo. The lab
+overruled both:
+
+| Was displayed | Now | Why |
+|---|---|---|
+| `Jens Kühle` (4 papers) | **`Jens Kuhle`** | the Basel neurologist spells it *Kuhle*; the umlaut is OpenAlex's |
+| `Jeniffer Chan` (15 papers) | **`Jennifer Chan`** | *Jeniffer* is a typo, and it won the cluster only by weight of papers |
+
+Both are rows in `people-merge-map.tsv`, which is what makes them stick: **the papers vote on a
+spelling and the merge map then has the final word.** The order is the point. The vote runs first so
+every spelling of one person arrives at the map as the same string; the map runs last so a curated
+name is what actually gets displayed, instead of being voted straight back to `Jens Kühle`.
+
+The cost of that order is a rule the map has to obey: **a canonical must be a name the vote cannot
+override.** Either no paper spells that person differently, or the spelling they do use is itself
+listed as a variant. `Jens Kuhle` passes because `Jens Kühle` is a variant. `Elodie Bouaziz-Amar`
+did not — the papers say `Élodie`, so the two spellings stayed two people until the row was
+corrected to match. Every row is checked, because a row that fails this splits a person in two
+instead of merging them.
+
+`tests/test_display_names.py` covers all of it: over the whole vault, no two people may differ only
+by case, diacritics or punctuation, no name still displayed may be listed as a variant, every
+canonical must survive the vote, and every unmerged person's paper count is re-derived
 independently from `papers/` and must match.
 
 ## Confirmed as different people
