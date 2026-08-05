@@ -2,7 +2,7 @@
 
 `vault/people/` contains one note per author name that OpenAlex reported. Where OpenAlex assigned the same human more than one author ID, that person ended up with several notes. All 1,667 notes were reviewed; this is the finished result.
 
-**69 people are split across 144 notes. Merging them removes 75 duplicate notes, taking `vault/people/` from 1,667 to 1,592.**
+**71 people are split across 148 notes. Merging them removes 77 duplicate notes, taking `vault/people/` from 1,667 to 1,590.**
 
 Machine-readable version: [`people-merge-map.tsv`](../people-merge-map.tsv) at the repo root (`canonical`, `variant`, `variant_file`). How each call was reached: [`duplicate-people-audit.md`](duplicate-people-audit.md).
 
@@ -24,6 +24,8 @@ The **Decided by** column is `lab` where a lab member confirmed the call and `ev
 | **Kevin Kang** | `Kevin H. Kang` | 16 | evidence |
 | **Gordon Francis** | `Gordon A. Francis` | 13 | evidence |
 | **Sonny Thiara** | `Sharanjit Thiara` | 13 | lab |
+| **William J. Panenka** | `Will Panenka` | 12 | lab |
+| **James S. Hutchison** | `Jamie Hutchison` | 10 | evidence |
 | **Noah D. Silverberg** | `Noah Noah Silverberg` | 9 | evidence |
 | **Julie A. Schneider** | `Julie Schneider` | 8 | evidence |
 | **Denise Foster** | `Denise A. Foster` | 7 | evidence |
@@ -82,6 +84,23 @@ The **Decided by** column is `lab` where a lab member confirmed the call and `ev
 | **Priscilla Carrion** | `Prescilla Carrion` | 2 | evidence |
 | **Rachel Zhao** | `Rui Qi Zhao` | 2 | lab |
 | **Tessa F. Morelli** | `Tessa Morelli` | 2 | evidence |
+
+### A correction
+
+`Will Panenka` → `William J. Panenka` and `Jamie Hutchison` → `James S. Hutchison` were reasoned
+through in the audit and written up as settled — but were never added to `people-merge-map.tsv`, so
+for several builds the merge simply never happened and both people stayed split. Caught when the lab
+asked about Panenka directly.
+
+The two are also the reason the "same paper, two variants" dedupe exists: the 2023 *Critical Care*
+metabolomics paper names each of them twice, individually and again as a consortium member. That is
+why merging them adds no papers to the totals — Panenka stays at 12 and Hutchison lands on 10 rather
+than 4 + 8 — and why the count is right rather than inflated.
+
+`tests/test_merge_map.py` now validates the shipped file itself: every name resolves to a real note,
+no variant is listed twice, no merge chains, the lab-confirmed merges are present, and the
+lab-confirmed *separate* people are absent. A decision written up but not applied now fails the
+tests.
 
 ## Confirmed as different people
 
