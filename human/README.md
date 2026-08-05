@@ -45,6 +45,7 @@ What you can do with it:
 - **Switch tabs** to browse the ~1,600 co-authors, 684 research topics, or the trainee theses (which
   link out to UBC cIRcle).
 - **Toggle light/dark** with the button in the corner; it follows your system theme by default.
+- **Include or exclude conference abstracts** with the checkbox beside the view switcher.
 
 On a phone the stat tiles go three-up, the controls pair off, and the chart resizes so the whole
 1989–2026 span fits without scrolling sideways.
@@ -156,6 +157,28 @@ git commit -am "Refresh vault and browser" && git push
 UBC cIRcle, but a deployment does put ~1,600 named co-authors and a citation snapshot on an
 open URL. Citation counts in particular are frozen at build time, so date the page or refresh it on
 a schedule if people are going to cite what they see.
+
+---
+
+## Conference abstracts
+
+Roughly one record in eight is a **conference abstract** — a meeting submission, not a
+peer-reviewed paper. They inflate the publication count while contributing almost nothing to any
+measure of impact: the 37 in this record hold **6 citations between them**, against ~17,900 for the
+rest. So the browser **excludes them by default**, and the checkbox beside the view switcher puts
+them back. The toggle moves everything at once — totals, chart, people, topics and both graphs —
+so no two views can disagree.
+
+OpenAlex types these as ordinary articles, so there is no field to read. They are identified from
+the title: the session code most of them carry (`P4-218:`, `O1-03-07`, `S3-02-03:`, `IC-P1`,
+`Abstract 245:`, `0404 `), or an all-capitals title — but never for a preprint, where shouty titles
+are just a house style.
+
+**The detection is deliberately conservative**, because wrongly hiding a real paper is worse than
+leaving an abstract in view. It under-catches: an abstract published in a supplement without a
+session code in its title is indistinguishable here from a short paper and stays counted. Nothing
+currently flagged has more than two citations, which is the check worth re-running if the rules
+change — see `is_abstract()` in `build_human.py`.
 
 ---
 

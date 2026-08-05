@@ -134,6 +134,9 @@
     font: inherit; font-size: 14px; color: var(--text-secondary); cursor: pointer;
   }
   .views button[aria-selected="true"] { background: var(--accent-wash); color: var(--text-primary); font-weight: 600; }
+  .viewbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .absbox { font-size: 13.5px; }
+  .absbox #absLabel { border-bottom: 1px dotted var(--border); }
   [hidden] { display: none !important; }
 
   /* map */
@@ -215,14 +218,20 @@
   <p class="prov">Built from the Obsidian vault in <code>vault/</code>. Publications from openalex.org; theses from UBC cIRcle. Citation counts are a snapshot from vault-build time and drift.</p>
 </header>
 
-<nav class="views" id="views" role="tablist">
-  <button role="tab" data-view="dashboard" aria-selected="true">Dashboard</button>
-  <button role="tab" data-view="map" aria-selected="false">Map</button>
-</nav>
+<div class="viewbar">
+  <nav class="views" id="views" role="tablist">
+    <button role="tab" data-view="dashboard" aria-selected="true">Dashboard</button>
+    <button role="tab" data-view="map" aria-selected="false">Map</button>
+  </nav>
+  <label class="chk absbox" title="Conference abstracts are meeting submissions, not peer-reviewed papers">
+    <input type="checkbox" id="absToggle"> <span id="absLabel">Include conference abstracts</span>
+  </label>
+</div>
 
 <div id="view-dashboard">
 
 <div class="tiles" id="tiles"></div>
+<p class="map-note" id="absNote"></p>
 
 <section class="card">
   <h2>Publications per year</h2>
@@ -245,7 +254,7 @@
       <option value="year-asc">Oldest first</option>
       <option value="cites">Most cited</option>
     </select>
-    <label class="chk"><input type="checkbox" id="oa"> Open access only</label>
+    <label class="chk" id="oaWrap"><input type="checkbox" id="oa"> Open access only</label>
     <span class="count" id="count"></span>
   </div>
   <div class="chips" id="chips"></div>
@@ -294,38 +303,120 @@ const DATA = /*__DATA__*/;
 const BUILT = "/*__BUILT__*/";
 
 const S = { tab: "papers", q: "", role: "", sort: "year", oa: false,
-            year: null, person: null, topic: null, limit: 40, open: new Set() };
+            year: null, person: null, topic: null, limit: 40, open: new Set(),
+            // Conference abstracts are ~12% of the record and carry almost no
+            // citations, so counting them alongside papers distorts every total
+            // on the page. Excluded by default; the toggle puts them back.
+            hideAbs: true };
+
+/* ── scope ────────────────────────────────────────────────────────────────
+   Everything on the page — totals, chart, people, topics, both graphs — is
+   derived here from whichever papers are in scope, so the abstract toggle
+   cannot leave one view disagreeing with another. Memoised per scope; there
+   are only two. */
+const _scopes = {};
+function scope() {
+  const key = S.hideAbs ? "papers" : "all";
+  if (_scopes[key]) return _scopes[key];
+
+  const papers = S.hideAbs ? DATA.papers.filter(p => !p.abs) : DATA.papers;
+  const roleOf = new Map(DATA.people.map(p => [p.n, p.r]));
+
+  const agg = (field) => {
+    const m = new Map();
+    for (const p of papers) {
+      for (const name of p[field]) {
+        let e = m.get(name);
+        if (!e) { e = { n: name, p: 0, ys: [] }; m.set(name, e); }
+        e.p++;
+        if (p.y) e.ys.push(p.y);
+      }
+    }
+    return [...m.values()].map(e => ({
+      n: e.n, p: e.p, r: roleOf.get(e.n) || "co-author",
+      f: e.ys.length ? String(Math.min(...e.ys)) : "",
+      l: e.ys.length ? String(Math.max(...e.ys)) : "",
+    })).sort((a, b) => a.n.localeCompare(b.n));
+  };
+
+  // Weighted co-occurrence. `cap` drops consortium papers from the co-author
+  // graph only — see the methodology note under the map.
+  const edges = (field, cap) => {
+    const w = new Map();
+    for (const p of papers) {
+      const items = [...new Set(p[field])].sort();
+      if (cap && items.length > cap) continue;
+      // Nested maps rather than a joined string key: a name can contain any
+      // punctuation, so no separator is safe to split back on.
+      for (let i = 0; i < items.length; i++) {
+        let row = w.get(items[i]);
+        if (!row) { row = new Map(); w.set(items[i], row); }
+        for (let j = i + 1; j < items.length; j++)
+          row.set(items[j], (row.get(items[j]) || 0) + 1);
+      }
+    }
+    const out = [];
+    for (const [a, row] of w) for (const [b, n] of row) out.push([a, b, n]);
+    return out;
+  };
+
+  const byYear = {};
+  for (const p of papers) if (p.y) byYear[p.y] = (byYear[p.y] || 0) + 1;
+
+  // Person notes with no paper in `papers/` at all would vanish from a
+  // papers-derived list; carry them through as the build did.
+  const fromPapers = agg("a");
+  const seen = new Set(fromPapers.map(p => p.n));
+  const carried = DATA.people.filter(p => p.n && !seen.has(p.n) && !DATA.papers.some(w => w.a.includes(p.n)));
+
+  return (_scopes[key] = {
+    papers,
+    people: fromPapers.concat(carried).sort((a, b) => a.n.localeCompare(b.n)),
+    topics: agg("k"),
+    peopleEdges: edges("a", DATA.graph.authorCap),
+    topicEdges: edges("k", 0),
+    byYear,
+    citations: papers.reduce((a, p) => a + p.c, 0),
+    abstracts: DATA.papers.filter(p => p.abs).length,
+  });
+}
 
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;" }[c]));
 const el = id => document.getElementById(id);
 
 /* ---------- stat tiles ---------- */
-const years = DATA.papers.map(p => p.y).filter(Boolean);
-const tiles = [
-  ["Publications", DATA.papers.length.toLocaleString()],
-  ["Citations", DATA.papers.reduce((a, p) => a + p.c, 0).toLocaleString()],
-  ["Co-authors", DATA.people.length.toLocaleString()],
-  ["Topics", DATA.topics.length.toLocaleString()],
-  ["Trainee theses", DATA.theses.length.toLocaleString()],
-  ["Span", Math.min(...years) + "–" + Math.max(...years), "sm"],
-];
-el("tiles").innerHTML = tiles.map(([l, v, cls]) =>
-  `<div class="tile"><div class="v ${cls || ""}">${esc(v)}</div><div class="l">${esc(l)}</div></div>`).join("");
+function renderTiles() {
+  const sc = scope();
+  const years = sc.papers.map(p => p.y).filter(Boolean);
+  const tiles = [
+    ["Publications", sc.papers.length.toLocaleString()],
+    ["Citations", sc.citations.toLocaleString()],
+    ["Co-authors", sc.people.length.toLocaleString()],
+    ["Topics", sc.topics.length.toLocaleString()],
+    ["Trainee theses", DATA.theses.length.toLocaleString()],
+    ["Span", years.length ? Math.min(...years) + "–" + Math.max(...years) : "—", "sm"],
+  ];
+  el("tiles").innerHTML = tiles.map(([l, v, cls]) =>
+    `<div class="tile"><div class="v ${cls || ""}">${esc(v)}</div><div class="l">${esc(l)}</div></div>`).join("");
+}
 
 /* ---------- chart: publications per year ---------- */
-const byYear = {};
-DATA.papers.forEach(p => { if (p.y) byYear[p.y] = (byYear[p.y] || 0) + 1; });
-const yrs = Object.keys(byYear).map(Number).sort((a, b) => a - b);
-const yMin = yrs[0], yMax = yrs[yrs.length - 1];
-const allYears = [];
-for (let y = yMin; y <= yMax; y++) allYears.push(y);
-const maxN = Math.max(...Object.values(byYear));
+// The year axis spans the whole record in both scopes, so toggling abstracts
+// changes bar heights without reflowing the axis under the reader.
+const allYears = (() => {
+  const ys = DATA.papers.map(p => p.y).filter(Boolean);
+  const out = [];
+  for (let y = Math.min(...ys); y <= Math.max(...ys); y++) out.push(y);
+  return out;
+})();
 
 function drawChart() {
   const gap = 2, padL = 30, padR = 8, padT = 10, padB = 26;
   // Derive bar width from the space actually available, so on a phone the whole
   // 1989–2026 span fits instead of demanding a sideways scroll to read. Falls
   // back to the roomy 13px once there is width for it.
+  const byYear = scope().byYear;
+  const maxN = Math.max(1, ...Object.values(byYear));
   const avail = (el("chart").parentElement.clientWidth || 900) - padL - padR;
   const barW = Math.max(4, Math.min(13, Math.floor(avail / allYears.length) - gap));
   const h = barW < 8 ? 120 : 150;
@@ -388,7 +479,7 @@ function match(hay, q) { return hay.toLowerCase().includes(q); }
 
 function papersFiltered() {
   const q = S.q.toLowerCase().trim();
-  return DATA.papers.filter(p => {
+  return scope().papers.filter(p => {
     if (S.year !== null && p.y !== S.year) return false;
     if (S.role && p.r !== S.role) return false;
     if (S.oa && !p.oa) return false;
@@ -405,7 +496,7 @@ function papersFiltered() {
 
 function renderPapers() {
   const rows = papersFiltered();
-  el("count").textContent = rows.length.toLocaleString() + " of " + DATA.papers.length.toLocaleString() + " publications";
+  el("count").textContent = rows.length.toLocaleString() + " of " + scope().papers.length.toLocaleString() + " publications";
   if (!rows.length) return `<li class="empty">Nothing matches these filters.</li>`;
   return rows.slice(0, S.limit).map((p, i) => {
     const idx = DATA.papers.indexOf(p);
@@ -434,9 +525,9 @@ function renderPapers() {
 
 function renderPeople() {
   const q = S.q.toLowerCase().trim();
-  const rows = DATA.people.filter(p => !q || match(p.n, q))
+  const rows = scope().people.filter(p => !q || match(p.n, q))
     .sort((a, b) => b.p - a.p || a.n.localeCompare(b.n));
-  el("count").textContent = rows.length.toLocaleString() + " of " + DATA.people.length.toLocaleString() + " people";
+  el("count").textContent = rows.length.toLocaleString() + " of " + scope().people.length.toLocaleString() + " people";
   if (!rows.length) return `<li class="empty">No one matches that search.</li>`;
   return rows.slice(0, S.limit).map(p =>
     `<li><div class="row-t" data-person="${esc(p.n)}">${esc(p.n)}`
@@ -447,9 +538,9 @@ function renderPeople() {
 
 function renderTopics() {
   const q = S.q.toLowerCase().trim();
-  const rows = DATA.topics.filter(t => !q || match(t.n, q))
+  const rows = scope().topics.filter(t => !q || match(t.n, q))
     .sort((a, b) => b.p - a.p || a.n.localeCompare(b.n));
-  el("count").textContent = rows.length.toLocaleString() + " of " + DATA.topics.length.toLocaleString() + " topics";
+  el("count").textContent = rows.length.toLocaleString() + " of " + scope().topics.length.toLocaleString() + " topics";
   if (!rows.length) return `<li class="empty">No topic matches that search.</li>`;
   return rows.slice(0, S.limit).map(t =>
     `<li><div class="row-t" data-topic="${esc(t.n)}">${esc(t.n)}</div>`
@@ -483,7 +574,7 @@ function render() {
     b.setAttribute("aria-selected", b.dataset.tab === S.tab));
   el("role").style.display = S.tab === "papers" ? "" : "none";
   el("sort").style.display = S.tab === "papers" ? "" : "none";
-  document.querySelector("label.chk").style.display = S.tab === "papers" ? "" : "none";
+  el("oaWrap").style.display = S.tab === "papers" ? "" : "none";
   el("list").innerHTML =
       S.tab === "papers" ? renderPapers()
     : S.tab === "people" ? renderPeople()
@@ -491,8 +582,8 @@ function render() {
     : renderTheses();
   const shown = el("list").children.length;
   const total = S.tab === "papers" ? papersFiltered().length
-    : S.tab === "people" ? DATA.people.filter(p => !S.q || match(p.n, S.q.toLowerCase())).length
-    : S.tab === "topics" ? DATA.topics.filter(t => !S.q || match(t.n, S.q.toLowerCase())).length : 0;
+    : S.tab === "people" ? scope().people.filter(p => !S.q || match(p.n, S.q.toLowerCase())).length
+    : S.tab === "topics" ? scope().topics.filter(t => !S.q || match(t.n, S.q.toLowerCase())).length : 0;
   el("more").innerHTML = (total > S.limit && S.tab !== "theses")
     ? `<button id="moreBtn">Show more (${(total - S.limit).toLocaleString()} left)</button>` : "";
   const mb = el("moreBtn");
@@ -540,10 +631,10 @@ const M = {
 };
 const MODES = {
   people: { mins: [2, 3, 5, 8, 12], def: 5, weights: [2, 3, 5], wdef: 2,
-            src: () => DATA.people, edges: () => G.people, unit: "person", units: "people",
+            src: () => scope().people, edges: () => scope().peopleEdges, unit: "person", units: "people",
             title: "Co-author network", label: n => n.n },
   topics: { mins: [3, 5, 10, 20], def: 5, weights: [3, 5, 8], wdef: 3,
-            src: () => DATA.topics, edges: () => G.topics, unit: "topic", units: "topics",
+            src: () => scope().topics, edges: () => scope().topicEdges, unit: "topic", units: "topics",
             title: "Topic map", label: n => n.n },
 };
 
@@ -561,9 +652,9 @@ function fillSelects() {
 function buildGraph() {
   const cfg = MODES[M.mode];
   const src = cfg.src();
-  const keep = new Map();               // source index -> node
-  src.forEach((d, i) => {
-    if ((d.p || 0) >= M.min) keep.set(i, { i, n: d.n, p: d.p || 0, deg: 0 });
+  const keep = new Map();               // name -> node (edges are name-keyed now,
+  src.forEach(d => {                    // since both are derived from the same scope)
+    if ((d.p || 0) >= M.min) keep.set(d.n, { n: d.n, p: d.p || 0, deg: 0 });
   });
   const edges = [];
   cfg.edges().forEach(([a, b, w]) => {
@@ -1001,6 +1092,37 @@ el("mapQ").addEventListener("input", e => {
   draw();
 });
 
+/* ---------- conference-abstract toggle ---------- */
+function syncAbsLabel() {
+  const sc = scope();
+  el("absLabel").textContent = S.hideAbs
+    ? `Include ${sc.abstracts} conference abstracts`
+    : `${sc.abstracts} conference abstracts included`;
+  const cites = DATA.papers.reduce((a, p) => a + (p.abs ? p.c : 0), 0);
+  el("absNote").innerHTML = S.hideAbs
+    ? `Excluding ${sc.abstracts} records that look like conference abstracts — meeting `
+      + `submissions rather than peer-reviewed papers, holding ${cites} citations between them. `
+      + `They are spotted by the session code in the title (<code>P4&#8209;218:</code>, `
+      + `<code>S3&#8209;02&#8209;03:</code>) or an all-capitals title, so detection is `
+      + `deliberately conservative — an abstract without such a code stays counted.`
+    : `Counting all ${DATA.papers.length} records, including ${sc.abstracts} that look like `
+      + `conference abstracts. Those hold ${cites} citations between them, so they raise the `
+      + `publication count far more than any measure of impact.`;
+}
+el("absToggle").addEventListener("change", e => {
+  S.hideAbs = !e.target.checked;
+  // Every total, the chart, both lists and the graph derive from the scope, so
+  // all of them have to be rebuilt — not just the paper list.
+  S.limit = 40; S.open.clear(); S.year = null;
+  if (S.person && !scope().people.some(p => p.n === S.person)) S.person = null;
+  if (S.topic && !scope().topics.some(t => t.n === S.topic)) S.topic = null;
+  syncAbsLabel();
+  renderTiles();
+  drawChart();
+  render();
+  if (M.built) { buildGraph(); startLoop(); }
+});
+
 /* view switching */
 function setView(v) {
   el("view-dashboard").hidden = v !== "dashboard";
@@ -1035,6 +1157,8 @@ addEventListener("resize", () => {
   resizeT = setTimeout(() => { if (!el("view-dashboard").hidden) drawChart(); }, 150);
 });
 
+syncAbsLabel();
+renderTiles();
 drawChart();
 render();
 </script>
