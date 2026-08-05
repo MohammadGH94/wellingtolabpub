@@ -136,8 +136,20 @@
   }
   .views button[aria-selected="true"] { background: var(--accent-wash); color: var(--text-primary); font-weight: 600; }
   .viewbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-  .absbox { font-size: 13.5px; }
-  .absbox #absLabel { border-bottom: 1px dotted var(--border); }
+  .kinds { display: flex; gap: 6px; flex-wrap: wrap; }
+  .notewrap { margin: 0 0 18px; }
+  .notewrap summary { font-size: 12.5px; color: var(--muted); cursor: pointer; }
+  .notewrap summary::marker { color: var(--muted); }
+  .notewrap .map-note { margin-top: 8px; }
+  .kinds button {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 999px;
+    padding: 6px 12px; font: inherit; font-size: 13px; color: var(--muted); cursor: pointer;
+  }
+  .kinds button[aria-pressed="true"] {
+    background: var(--accent-wash); border-color: var(--series-1); color: var(--text-primary);
+  }
+  .kinds button b { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .kinds button[aria-pressed="true"]::before { content: "\2713 "; color: var(--series-1); }
   [hidden] { display: none !important; }
 
   /* map */
@@ -166,13 +178,19 @@
 
     /* Coarse pointers need ~44px targets; these were 34–37px, and the
        open-access checkbox was 13px. */
-    .views button, .tab, .btn, .more button, .theme-btn { min-height: 44px; }
+    .views button, .tab, .btn, .more button, .theme-btn, .kinds button { min-height: 44px; }
     input[type="search"], select { min-height: 44px; }
     label.chk { min-height: 44px; font-size: 15px; }
     label.chk input { width: 20px; height: 20px; }
 
     /* Six tiles stacked 2-up cost 283px before anything useful; three
        narrower columns halve that. */
+    /* Five chips stacked cost ~150px before any content; one swipeable row
+       keeps them all reachable for ~44px. */
+    .kinds { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+    .kinds::-webkit-scrollbar { display: none; }
+    .kinds button { flex: 0 0 auto; white-space: nowrap; }
+    .viewbar { gap: 8px; align-items: stretch; }
     .tiles { grid-template-columns: repeat(3, 1fr); gap: 7px; margin: 16px 0; }
     .tile { padding: 9px 10px; }
     .tile .v { font-size: 17px; }
@@ -224,15 +242,16 @@
     <button role="tab" data-view="dashboard" aria-selected="true">Dashboard</button>
     <button role="tab" data-view="map" aria-selected="false">Map</button>
   </nav>
-  <label class="chk absbox" title="Conference abstracts are meeting submissions, not peer-reviewed papers">
-    <input type="checkbox" id="absToggle"> <span id="absLabel">Include conference abstracts</span>
-  </label>
+  <div class="kinds" id="kinds" role="group" aria-label="Which kinds of record to count"></div>
 </div>
 
 <div id="view-dashboard">
 
 <div class="tiles" id="tiles"></div>
-<p class="map-note" id="absNote"></p>
+<details class="notewrap" id="kindNote">
+  <summary id="kindSummary"></summary>
+  <p class="map-note" id="absNote"></p>
+</details>
 
 <section class="card">
   <h2>Publications per year</h2>
@@ -305,11 +324,12 @@ const BUILT = "/*__BUILT__*/";
 
 const S = { tab: "papers", q: "", role: "", sort: "year", oa: false,
             year: null, person: null, topic: null, limit: 40, open: new Set(),
-            // A quarter of the records are not papers: conference abstracts,
-            // supplementary files deposited beside a paper, and editorial
-            // furniture. They hold almost no citations but inflate every count
-            // on the page, so they are excluded by default.
-            papersOnly: true };
+            // Which record kinds to count. A quarter of the records are not
+            // journal articles — conference abstracts, preprints, supplementary
+            // files deposited beside a paper, editorial furniture — and they
+            // inflate every total while adding almost no citations. Articles
+            // only by default; any combination is selectable.
+            kinds: new Set(["article"]) };
 
 /* ── scope ────────────────────────────────────────────────────────────────
    Everything on the page — totals, chart, people, topics, both graphs — is
@@ -317,16 +337,25 @@ const S = { tab: "papers", q: "", role: "", sort: "year", oa: false,
    cannot leave one view disagreeing with another. Memoised per scope; there
    are only two. */
 const _scopes = {};
-// How many records of each non-paper kind, and what they are worth in citations.
-const KINDS = ["abstract", "supplement", "other"];
-const nonPaper = DATA.papers.filter(p => p.kind !== "paper");
-const KIND_N = Object.fromEntries(KINDS.map(k => [k, DATA.papers.filter(p => p.kind === k).length]));
-const NONPAPER_CITES = nonPaper.reduce((a, p) => a + p.c, 0);
+// Every record kind, in the order they are offered, with what each is worth.
+const KINDS = [
+  ["article",    "Articles",             "peer-reviewed journal articles and reviews"],
+  ["preprint",   "Preprints",            "bioRxiv, medRxiv, Research Square, SSRN — several duplicate a journal version also in this list"],
+  ["abstract",   "Conference abstracts", "meeting submissions, identified by supplement DOI, session code or an all-capitals title"],
+  ["supplement", "Supplementary files",  "Figshare deposits belonging to a paper already in this list"],
+  ["other",      "Other records",        "editorial furniture and peer-review artefacts — a preface, a news column, an author response"],
+];
+const KIND_N = {}, KIND_C = {};
+for (const [k] of KINDS) {
+  const rows = DATA.papers.filter(p => p.kind === k);
+  KIND_N[k] = rows.length;
+  KIND_C[k] = rows.reduce((a, p) => a + p.c, 0);
+}
 function scope() {
-  const key = S.papersOnly ? "papers" : "all";
+  const key = [...S.kinds].sort().join("+") || "none";
   if (_scopes[key]) return _scopes[key];
 
-  const papers = S.papersOnly ? DATA.papers.filter(p => p.kind === "paper") : DATA.papers;
+  const papers = DATA.papers.filter(p => S.kinds.has(p.kind));
   const roleOf = new Map(DATA.people.map(p => [p.n, p.r]));
 
   const agg = (field) => {
@@ -503,6 +532,7 @@ function papersFiltered() {
 function renderPapers() {
   const rows = papersFiltered();
   el("count").textContent = rows.length.toLocaleString() + " of " + scope().papers.length.toLocaleString() + " publications";
+  if (!S.kinds.size) return `<li class="empty">No record kinds selected — pick at least one above.</li>`;
   if (!rows.length) return `<li class="empty">Nothing matches these filters.</li>`;
   return rows.slice(0, S.limit).map((p, i) => {
     const idx = DATA.papers.indexOf(p);
@@ -512,8 +542,9 @@ function renderPapers() {
     meta.push(`${p.c} citation${p.c === 1 ? "" : "s"}`);
     let h = `<li><div class="row-t" data-open="${idx}">${esc(p.t)}</div>`
       + `<div class="row-m">` + meta.join(" · ")
-      + (p.kind !== "paper" ? `<span class="pill kindpill">${esc(
-            { abstract: "conference abstract", supplement: "supplementary file" }[p.kind] || "not an article"
+      + (p.kind !== "article" ? `<span class="pill kindpill">${esc(
+            { abstract: "conference abstract", preprint: "preprint",
+              supplement: "supplementary file" }[p.kind] || "not an article"
           )}</span>` : "")
       + (p.r ? `<span class="pill">${esc(p.r)}</span>` : "")
       + (p.oa ? `<span class="pill">open access</span>` : "")
@@ -1102,39 +1133,48 @@ el("mapQ").addEventListener("input", e => {
 });
 
 /* ---------- conference-abstract toggle ---------- */
-function syncAbsLabel() {
+// Built once. Toggling updates attributes in place rather than re-rendering the
+// row: replacing the innerHTML would destroy the button under the pointer and
+// throw away keyboard focus mid-interaction.
+el("kinds").innerHTML = KINDS.map(([k, label, why]) =>
+  `<button type="button" data-kind="${k}" aria-pressed="${S.kinds.has(k)}" title="${esc(why)}">`
+  + `${esc(label)} <b>${KIND_N[k]}</b></button>`).join("");
+
+function renderKinds() {
+  document.querySelectorAll("#kinds button").forEach(b =>
+    b.setAttribute("aria-pressed", S.kinds.has(b.dataset.kind)));
+
+  const on = KINDS.filter(([k]) => S.kinds.has(k));
+  const off = KINDS.filter(([k]) => !S.kinds.has(k) && KIND_N[k]);
   const sc = scope();
-  const total = nonPaper.length;
-  const parts = [];
-  if (KIND_N.abstract) parts.push(`${KIND_N.abstract} conference abstracts`);
-  if (KIND_N.supplement) parts.push(`${KIND_N.supplement} supplementary files`);
-  if (KIND_N.other) parts.push(`${KIND_N.other} editorial or peer-review records`);
-  const list = parts.join(", ").replace(/, ([^,]*)$/, " and $1");
+  const name = ([, l]) => l.toLowerCase();
+  const join = xs => xs.map(name).join(", ").replace(/, ([^,]*)$/, " and $1");
 
-  el("absLabel").textContent = S.papersOnly
-    ? `Include ${total} abstracts and other non-articles`
-    : `${total} abstracts and other non-articles included`;
-
-  el("absNote").innerHTML = S.papersOnly
-    ? `Counting ${sc.papers.length} peer-reviewed papers. Excluded: ${esc(list)} — `
-      + `${total} of ${DATA.papers.length} records, holding ${NONPAPER_CITES} citations between `
-      + `them against ${sc.citations.toLocaleString()} for the papers. They are identified by `
-      + `DOI shape (an Alzheimer's &amp; Dementia supplement is <code>alz.047179</code> where an `
-      + `article is <code>alz.12157</code>), by a session code in the title `
-      + `(<code>P4&#8209;218:</code>), or by an all-capitals title. Detection is deliberately `
-      + `conservative, so a few abstracts without any of those markers are still counted.`
-    : `Counting all ${DATA.papers.length} records, including ${esc(list)}. Those hold `
-      + `${NONPAPER_CITES} citations between them, so they raise the publication count far more `
-      + `than any measure of impact.`;
+  el("kindSummary").textContent = on.length
+    ? `Counting ${sc.papers.length.toLocaleString()} records — ${join(on)}`
+    : "No record kinds selected";
+  el("absNote").innerHTML = !on.length
+    ? "No record kinds selected — pick at least one above."
+    : `Counting ${sc.papers.length.toLocaleString()} records: ${esc(join(on))}`
+      + (off.length ? `. Leaving out ${esc(join(off))}` : "")
+      + `. OpenAlex types nearly all of these as ordinary articles, so the kinds are worked out `
+      + `here from the DOI, venue and title — an Alzheimer's &amp; Dementia supplement is `
+      + `<code>alz.047179</code> where an article is <code>alz.12157</code>. Detection is `
+      + `deliberately conservative, so a few abstracts without any such marker are still counted `
+      + `as articles.`;
 }
-el("absToggle").addEventListener("change", e => {
-  S.papersOnly = !e.target.checked;
+
+el("kinds").addEventListener("click", e => {
+  const b = e.target.closest("button[data-kind]");
+  if (!b) return;
+  const k = b.dataset.kind;
+  S.kinds.has(k) ? S.kinds.delete(k) : S.kinds.add(k);
   // Every total, the chart, both lists and the graph derive from the scope, so
   // all of them have to be rebuilt — not just the paper list.
   S.limit = 40; S.open.clear(); S.year = null;
   if (S.person && !scope().people.some(p => p.n === S.person)) S.person = null;
   if (S.topic && !scope().topics.some(t => t.n === S.topic)) S.topic = null;
-  syncAbsLabel();
+  renderKinds();
   renderTiles();
   drawChart();
   render();
@@ -1175,7 +1215,10 @@ addEventListener("resize", () => {
   resizeT = setTimeout(() => { if (!el("view-dashboard").hidden) drawChart(); }, 150);
 });
 
-syncAbsLabel();
+// The explanation is worth having open on a desktop and worth its ~150px on a
+// phone only when asked for.
+el("kindNote").open = !matchMedia("(max-width: 640px)").matches;
+renderKinds();
 renderTiles();
 drawChart();
 render();

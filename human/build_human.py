@@ -125,13 +125,13 @@ PREPRINT_TYPES = frozenset({"preprint", "posted-content"})
 
 
 def record_kind(title: str, work_type: str, venue: str, doi: str) -> str:
-    """Classify a record as "paper" or the kind of non-paper it is.
+    """Classify a record by what kind of output it actually is.
 
     OpenAlex types nearly all of these as ordinary articles, so there is no
     field to read — the evidence is in the DOI, the venue and the title. Only
-    "paper" is counted as a publication by default.
+    "article" is counted by default; the page can include any combination.
 
-    Returns one of: "paper", "abstract", "supplement", "other".
+    Returns one of: "article", "preprint", "abstract", "supplement", "other".
 
     Rules are chosen for precision, because wrongly demoting a real paper is
     worse than leaving a stray abstract in the count. Every rule was checked
@@ -145,20 +145,21 @@ def record_kind(title: str, work_type: str, venue: str, doi: str) -> str:
         return "supplement"
     if work_type == "peer-review" or NON_ARTICLE_TITLE.match(title):
         return "other"
+    # Checked before the abstract rules so a shouty preprint title cannot be
+    # mistaken for a proceedings abstract.
+    if work_type in PREPRINT_TYPES:
+        return "preprint"
     if ABSTRACT_DOI.search(doi):
         return "abstract"
     if venue.startswith("Proceedings on CD-ROM") or "Supplements" in venue:
         return "abstract"
     if ABSTRACT_CODE.match(title):
         return "abstract"
-    # All-capitals titles are how several proceedings render abstracts — but a
-    # preprint server is just a house style, so never there.
+    # All-capitals titles are how several proceedings render abstracts.
     letters = [c for c in title if c.isalpha()]
-    if (len(letters) > 20
-            and sum(c.isupper() for c in letters) / len(letters) > 0.9
-            and work_type not in PREPRINT_TYPES):
+    if len(letters) > 20 and sum(c.isupper() for c in letters) / len(letters) > 0.9:
         return "abstract"
-    return "paper"
+    return "article"
 
 
 def clean_abstract(text: str) -> str:
@@ -370,8 +371,9 @@ def main(argv: list[str] | None = None) -> int:
     kinds = collections.Counter(p["kind"] for p in data["papers"])
     print(
         f"Wrote {args.out} — {len(data['papers'])} records "
-        f"({kinds['paper']} papers, {kinds['abstract']} abstracts, "
-        f"{kinds['supplement']} supplements, {kinds['other']} other), "
+        f"({kinds['article']} articles, {kinds['preprint']} preprints, "
+        f"{kinds['abstract']} abstracts, {kinds['supplement']} supplements, "
+        f"{kinds['other']} other), "
         f"{len(data['people'])} people, "
         f"{len(data['topics'])} topics, {len(data['theses'])} theses "
         f"({os.path.getsize(args.out) // 1024} KB)"

@@ -45,8 +45,8 @@ What you can do with it:
 - **Switch tabs** to browse the ~1,600 co-authors, 684 research topics, or the trainee theses (which
   link out to UBC cIRcle).
 - **Toggle light/dark** with the button in the corner; it follows your system theme by default.
-- **Include or exclude non-papers** (conference abstracts, supplementary files) with the
-  checkbox beside the view switcher.
+- **Choose what counts** — articles, preprints, conference abstracts, supplementary files and other
+  records toggle independently with the chips beside the view switcher.
 
 On a phone the stat tiles go three-up, the controls pair off, and the chart resizes so the whole
 1989–2026 span fits without scrolling sideways.
@@ -163,38 +163,53 @@ a schedule if people are going to cite what they see.
 
 ## What counts as a publication
 
-**A quarter of the records are not papers.** Of 306 records, 226 are peer-reviewed papers; the
-other 80 are 63 conference abstracts, 11 supplementary files deposited beside a paper, and 6
-editorial or peer-review artefacts (a journal's "HotSpots" news column, a preface, an eLife author
-response). Between them those 80 hold **13 citations**, against 17,921 for the papers — they inflate
-the publication count and almost nothing else.
+**A third of the records are not journal articles.** The 306 records resolve to:
 
-So the browser counts **papers only by default**, and the checkbox beside the view switcher includes
-everything. The toggle moves totals, chart, people, topics and both graphs together, so no two views
-can disagree. With everything shown, each non-paper row is labelled with what it is.
+| Kind | Count | Citations | What it is |
+|---|---|---|---|
+| Articles | **209** | 17,912 | peer-reviewed journal articles and reviews |
+| Preprints | 17 | 9 | bioRxiv, medRxiv, Research Square, SSRN |
+| Conference abstracts | 63 | 11 | meeting submissions |
+| Supplementary files | 11 | 0 | Figshare deposits belonging to a paper already in the list |
+| Other records | 6 | 2 | a preface, a news column, an eLife author response |
 
-### How they are identified
+The 97 non-article records hold **22 citations between them**, against 17,912 for the articles — they
+move the publication count and essentially nothing else.
 
-OpenAlex types nearly all of them as ordinary articles, so there is no field to read. The evidence
+### Choosing what to count
+
+A row of chips beside the view switcher turns each kind on or off independently, so any combination
+works: **articles only** (the default), **articles and abstracts**, **abstracts only**, **preprints
+only**, everything, or nothing. Each chip shows how many records it holds.
+
+Independent toggles rather than a fixed set of presets, because presets cannot express "preprints
+only" and "articles and abstracts" at the same time, and the counts are what make the choice
+informed. Selecting a kind moves **totals, chart, people, topics and both graphs together**, so no
+two views can disagree about what is being counted. When a non-article kind is shown, each of its
+rows is labelled with what it is.
+
+Note that preprints and articles overlap: several preprints are earlier versions of a journal
+article also in the list, so "articles and preprints" double-counts that work.
+
+### How the kinds are worked out
+
+OpenAlex types nearly all of these as ordinary articles, so there is no field to read. The evidence
 is in the DOI, the venue and the title:
 
 | Signal | Example |
 |---|---|
 | Supplement DOI | `10.1002/alz.047179` — an Alzheimer's & Dementia supplement; a real article there is `alz.12157` |
-| | `10.1002/alz70856_102379` (its 2025 form), `10.1136/bjsports-2023-concussion.207`, `10.1182/blood-2023-178867`, `10.58530/…` (ISMRM), `…05201s416` |
+| | `alz70856_102379` (its 2025 form), `bjsports-2023-concussion.207`, `blood-2023-178867`, `10.58530/…` (ISMRM), `…05201s416` |
 | Session code in title | `P4-218:`, `O1-03-07`, `S3-02-03:`, `IC-P1`, `Abstract 245:`, `2.16 `, `73 (13B) ` |
-| All-capitals title | how several proceedings render them — but never for a preprint, where it is just house style |
+| All-capitals title | how several proceedings render them |
 | Figshare DOI / "Additional file" | `10.6084/m9.figshare.…` |
+| Work type | `preprint`, `posted-content`, `peer-review` |
 
-**The rules are deliberately conservative**, because wrongly demoting a real paper is worse than
-leaving an abstract in the count. Nothing demoted has more than **two** citations, while the papers
+**The rules are deliberately conservative**, because misfiling a real paper is worse than leaving an
+abstract among the articles. Nothing demoted has more than **two** citations, while the articles
 kept have a median of 30 — that is the check worth re-running if the rules change. It still
 under-catches: an abstract published in a supplement with no session code and an ordinary DOI is
-indistinguishable here from a short paper.
-
-**Preprints are counted as papers.** The 17 bioRxiv/medRxiv/Research Square/SSRN records are
-genuine outputs, but several duplicate a journal version that is also in the list — so the
-paper count is still slightly generous. Say the word if you would rather they were separated too.
+indistinguishable here from a short article.
 
 See `record_kind()` in `build_human.py`.
 
