@@ -16,10 +16,8 @@ Stdlib only, same as the rest of the repo. No network access.
 from __future__ import annotations
 
 import argparse
-import collections
 import datetime as dt
 import glob
-import itertools
 import json
 import os
 import re
@@ -88,6 +86,50 @@ def parse_note(path: str) -> tuple[dict, str]:
             key = k.strip()
             data[key] = v.strip().strip('"')
     return data, text[m.end():]
+
+
+# Conference abstracts carry a session code from the meeting programme:
+# "P4-218:", "O1-03-07", "S3-02-03:", "PL-04-01:", "[P3–182]:", "IC-P1", "LB-P4",
+# "Abstract 245:", "0404 ", "73 (13B) ", "A.1 ". Hyphens vary (ASCII, non-breaking,
+# en/em dash) because the source records are inconsistent.
+ABSTRACT_CODE = re.compile(r"""^\s*(
+    \[?[A-Z]{1,2}[‐‑–—-]?\d{1,2}[‐‑–—.\- ]\s?\d   # P1-196, O1-03-07, S3-02-03, PL-04-01
+  | (IC|LB|DT)[‐‑–—-]P?\d                          # IC-P1, LB-P4, DT-01
+  | abstract\s+\d+                                 # Abstract 245:
+  | \d{3,4}\s+\w                                   # 0404 Sleep Characterization
+  | \d{1,3}\s*\(\d+[A-Za-z]?\)                     # 73 (13B) Sex, puberty
+  | [A-Z]\.\d+\s                                   # A.1 Repurposing Ambroxol
+)""", re.I | re.X)
+
+# Preprint servers legitimately carry shouty titles, so the all-caps signal must
+# not apply to them.
+PREPRINT_TYPES = frozenset({"preprint", "posted-content"})
+
+
+def is_abstract(title: str, work_type: str) -> bool:
+    """Best-effort: does this record look like a conference abstract?
+
+    OpenAlex types these as ordinary articles, so there is no field to read —
+    only the shape of the title. Two signals, both chosen for precision, because
+    wrongly hiding a real paper is worse than leaving an abstract in view:
+
+      1. A meeting session code at the start of the title.
+      2. An all-capitals title, which is how several proceedings render them —
+         but never for a preprint, where shouty titles are just a style.
+
+    This under-catches by design. Abstracts published in a supplement without a
+    session code in the title are indistinguishable here from short papers, and
+    stay counted as publications.
+    """
+    title = title or ""
+    if ABSTRACT_CODE.match(title):
+        return True
+    letters = [c for c in title if c.isalpha()]
+    if (len(letters) > 20
+            and sum(c.isupper() for c in letters) / len(letters) > 0.9
+            and (work_type or "").lower() not in PREPRINT_TYPES):
+        return True
+    return False
 
 
 def clean_abstract(text: str) -> str:
@@ -186,8 +228,11 @@ def collect(vault: str, merge_map: dict | None = None) -> dict:
     for path in sorted(glob.glob(os.path.join(vault, "papers", "*.md"))):
         fm, body = parse_note(path)
         abstract = re.search(r"## Abstract\n(.+?)(?:\n##|\Z)", body, re.S)
+        title = fm.get("title", "")
+        work_type = fm.get("work_type", "")
         papers.append({
-            "t": fm.get("title", ""),
+            "t": title,
+            "abs": is_abstract(title, work_type),
             "y": as_int(fm.get("year"), 0) or None,
             "v": fm.get("venue", ""),
             "doi": fm.get("doi", ""),
@@ -237,43 +282,12 @@ def collect(vault: str, merge_map: dict | None = None) -> dict:
         })
 
     return {"papers": papers, "people": people, "topics": topics, "theses": theses,
-            "graph": build_graphs(papers, people, topics),
+            "graph": {"authorCap": CONSORTIUM_AUTHORS,
+                      "minPeopleWeight": MIN_COAUTHOR_WEIGHT,
+                      "minTopicWeight": MIN_TOPIC_WEIGHT,
+                      "consortiumSkipped": sum(1 for p in papers
+                                               if len(p["a"]) > CONSORTIUM_AUTHORS)},
             "_notePeople": len(note_people), "_carried": carried}
-
-
-def build_graphs(papers: list, people: list, topics: list) -> dict:
-    """Precompute the co-authorship and topic co-occurrence edge lists.
-
-    Edges are `[i, j, weight]` where i and j index into `people` / `topics` —
-    integer indices rather than names keep the payload small enough to embed.
-    """
-    person_at = {p["n"]: i for i, p in enumerate(people)}
-    topic_at = {t["n"]: i for i, t in enumerate(topics)}
-
-    coauthor: collections.Counter = collections.Counter()
-    consortium_skipped = 0
-    for paper in papers:
-        names = sorted({n for n in paper["a"] if n in person_at})
-        if len(names) > CONSORTIUM_AUTHORS:
-            consortium_skipped += 1
-            continue
-        for a, b in itertools.combinations(names, 2):
-            coauthor[(person_at[a], person_at[b])] += 1
-
-    cooccur: collections.Counter = collections.Counter()
-    for paper in papers:
-        names = sorted({t for t in paper["k"] if t in topic_at})
-        for a, b in itertools.combinations(names, 2):
-            cooccur[(topic_at[a], topic_at[b])] += 1
-
-    return {
-        "people": [[i, j, w] for (i, j), w in coauthor.items() if w >= MIN_COAUTHOR_WEIGHT],
-        "topics": [[i, j, w] for (i, j), w in cooccur.items() if w >= MIN_TOPIC_WEIGHT],
-        "authorCap": CONSORTIUM_AUTHORS,
-        "consortiumSkipped": consortium_skipped,
-        "minPeopleWeight": MIN_COAUTHOR_WEIGHT,
-        "minTopicWeight": MIN_TOPIC_WEIGHT,
-    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -323,13 +337,11 @@ def main(argv: list[str] | None = None) -> int:
     with open(args.out, "w", encoding="utf-8") as f:
         f.write(html)
 
-    g = data["graph"]
+    abstracts = sum(1 for p in data["papers"] if p["abs"])
     print(
-        f"Wrote {args.out} — {len(data['papers'])} papers, {len(data['people'])} people, "
-        f"{len(data['topics'])} topics, {len(data['theses'])} theses; "
-        f"map: {len(g['people'])} co-author edges "
-        f"({g['consortiumSkipped']} consortium papers excluded), "
-        f"{len(g['topics'])} topic edges "
+        f"Wrote {args.out} — {len(data['papers'])} papers "
+        f"({abstracts} look like conference abstracts), {len(data['people'])} people, "
+        f"{len(data['topics'])} topics, {len(data['theses'])} theses "
         f"({os.path.getsize(args.out) // 1024} KB)"
     )
     if merge_map:
