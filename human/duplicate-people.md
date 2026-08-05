@@ -2,7 +2,7 @@
 
 `vault/people/` contains one note per author name that OpenAlex reported. Where OpenAlex assigned the same human more than one author ID, that person ended up with several notes. All 1,667 notes were reviewed; this is the finished result.
 
-**71 people are split across 148 notes. Merging them removes 77 duplicate notes, taking `vault/people/` from 1,667 to 1,590.**
+**72 people are split across 150 notes. Merging them removes 78 duplicate notes, taking `vault/people/` from 1,667 to 1,589.**
 
 Machine-readable version: [`people-merge-map.tsv`](../people-merge-map.tsv) at the repo root (`canonical`, `variant`, `variant_file`). How each call was reached: [`duplicate-people-audit.md`](duplicate-people-audit.md).
 
@@ -102,6 +102,49 @@ no variant is listed twice, no merge chains, the lab-confirmed merges are presen
 lab-confirmed *separate* people are absent. A decision written up but not applied now fails the
 tests.
 
+## A second kind of duplicate — spelling, not identity
+
+Everything above is about OpenAlex filing one human under several author IDs. A different splitting
+happened only in the browser, and no merge-map row could have fixed it.
+
+OpenAlex spells the same person differently from paper to paper — `Ramon Diaz‐Arrastia` on six
+papers and `Ramon Diaz Arrastia` on a seventh, differing by one non-ASCII hyphen. The vault handles
+this correctly: both spellings slugify to the same filename, so there is one note,
+`Ramon Diaz Arrastia.md`, with all 7 papers. But the note links to the person as
+`[[Ramon Diaz Arrastia|Ramon Diaz‐Arrastia]]`, and `build_human.py` read the **alias** as the
+person's identity. Two spellings, two entries, 6 papers and 1 — while the vault had it right all
+along.
+
+Seven people were affected. Six differed only by diacritics or hyphen character:
+
+| Spellings the papers used | Papers |
+|---|---|
+| `Ramon Diaz‐Arrastia` / `Ramon Diaz Arrastia` | 7 |
+| `Jens Kühle` / `Jens Kuhle` | 4 |
+| `Agnieszka Kulczyńska‐Przybik` / `Agnieszka Kulczynska‐Przybik` | 4 |
+| `Élodie Bouaziz-Amar` / `Elodie Bouaziz-Amar` | 4 |
+| `Silvia de las Heras Flórez` / `Silvia de las Heras Florez` | 3 |
+| `Pèter Köertvelyessy` / `Peter Koertvelyessy` | 2 |
+
+The fix is to key people on the wikilink **target** — the note filename, which is the vault's
+identity for a person — and use the alias only as a label, picking the spelling the most papers use.
+That is `resolve_labels()` in `build_human.py`. It needs no curation and cannot go stale.
+
+The seventh is the exception that still needed a map row: `Peter Koertvelyessy` and
+`Peter Körtvélyessy` are the German transliteration and the Hungarian spelling of one surname, so
+they slugify to *different* files and the vault genuinely has two notes. Only a curated merge joins
+those.
+
+Two spelling calls the lab may want to overrule, since the rule picks whichever spelling the most
+papers use and that is not always the right one: **`Jens Kühle`** (4 papers) is displayed, though
+the Basel neurologist spells it *Kuhle*; and **`Jeniffer Chan`** (15 papers) is the canonical for
+that cluster, which looks like a typo for *Jennifer*. Both are one-line changes to
+`people-merge-map.tsv`.
+
+`tests/test_display_names.py` covers this: over the whole vault, no two people may differ only by
+case, diacritics or punctuation, and every unmerged person's paper count is re-derived
+independently from `papers/` and must match.
+
 ## Confirmed as different people
 
 Similar names that were checked and are **not** duplicates. Do not merge these.
@@ -124,7 +167,7 @@ A further 30-odd same-surname pairs were checked and cleared; they are listed in
 
 ## What this list cannot catch
 
-**Two limits, both worth knowing before treating 1,592 as the true number of people.**
+**Two limits, both worth knowing before treating 1,589 as the true number of people.**
 
 **Names with nothing in common.** `Rachel Zhao` and `Rui Qi Zhao` are one trainee under an English
 and a Chinese given name. The two strings share only the surname and, coincidentally, a first
