@@ -7,6 +7,7 @@ Stdlib only, matching the rest of the repo — no pytest dependency.
 
 from __future__ import annotations
 
+import collections
 import tempfile
 import unittest
 from pathlib import Path
@@ -153,6 +154,69 @@ class MergePass(unittest.TestCase):
         canonicalize_authorships(works, merge_map={})
         self.assertIn("No Id Person", build_indexes(works)["by_person"])
 
+
+
+class ShippedMergeMap(unittest.TestCase):
+    """Validate the curated map that actually ships, not just the loader.
+
+    The Panenka and Hutchison merges were written up as settled but never added
+    to the file, so they silently never happened. These checks make that class
+    of mistake fail loudly instead.
+    """
+
+    REPO = Path(__file__).resolve().parent.parent
+
+    @classmethod
+    def setUpClass(cls):
+        import csv
+        cls.path = cls.REPO / "people-merge-map.tsv"
+        with cls.path.open(encoding="utf-8") as fh:
+            cls.rows = list(csv.DictReader(fh, delimiter="\t"))
+
+    def test_not_empty(self):
+        self.assertGreater(len(self.rows), 50)
+
+    def test_every_name_has_a_note_in_the_vault(self):
+        from wellington_vault.notes import person_filename
+        people = self.REPO / "vault" / "people"
+        if not people.is_dir():
+            self.skipTest("no vault checked out")
+        missing = [n for r in self.rows for n in (r["canonical"], r["variant"])
+                   if not (people / f"{person_filename(n)}.md").exists()]
+        self.assertEqual(missing, [], "merge-map names with no person note")
+
+    def test_variant_file_column_matches_slugify(self):
+        from wellington_vault.notes import person_filename
+        wrong = [r["variant"] for r in self.rows
+                 if r["variant_file"] != f"{person_filename(r['variant'])}.md"]
+        self.assertEqual(wrong, [], "variant_file out of step with person_filename()")
+
+    def test_no_variant_listed_twice(self):
+        seen = collections.Counter(r["variant"] for r in self.rows)
+        self.assertEqual([n for n, c in seen.items() if c > 1], [])
+
+    def test_no_chains(self):
+        """A canonical name must not itself be someone else's variant."""
+        canon = {r["canonical"] for r in self.rows}
+        variants = {r["variant"] for r in self.rows}
+        self.assertEqual(sorted(canon & variants), [])
+
+    def test_confirmed_merges_are_present(self):
+        """Decisions confirmed by the lab must actually be in the file."""
+        pairs = {(r["canonical"], r["variant"]) for r in self.rows}
+        for pair in [("William J. Panenka", "Will Panenka"),
+                     ("James S. Hutchison", "Jamie Hutchison"),
+                     ("Sonny Thiara", "Sharanjit Thiara"),
+                     ("Rachel Zhao", "Rui Qi Zhao"),
+                     ("Kris M. Martens", "Kristina Martens")]:
+            self.assertIn(pair, pairs, f"{pair[1]} -> {pair[0]} missing from the merge map")
+
+    def test_people_kept_apart_are_not_merged(self):
+        """Pairs the lab confirmed as different people must never appear."""
+        variants = {r["variant"] for r in self.rows}
+        for name in ["Jennifer A. Chan", "Amy Wilkinson", "David R. Howell",
+                     "David D. Howell", "Yu Deng"]:
+            self.assertNotIn(name, variants, f"{name} was confirmed as a separate person")
 
 if __name__ == "__main__":
     unittest.main()
