@@ -300,16 +300,29 @@ def collect(vault: str, merge_map: dict | None = None) -> dict:
     topic_labels = resolve_labels(link_pairs(fm.get("topics", [])) for fm, _ in parsed)
 
     def relabel(name: str) -> str:
-        """Re-resolve a name through the labels, since the merge map names people
-        by one particular spelling and that may not be the one that won."""
+        """Settle a name on the spelling its note is displayed under."""
         return author_labels.get(person_filename(name), name) if person_filename else name
 
     def canonical(name: str) -> str:
+        """Papers vote on the spelling; the merge map then has the final word.
+
+        Order matters. The vote runs first so that every spelling of one person
+        reaches the map as the same string, and the map runs last so a curated
+        canonical is what actually gets displayed — `Jens Kuhle` would otherwise
+        be voted straight back to the `Jens Kühle` its papers happen to use.
+
+        The cost is that a canonical must be a name the vote cannot override:
+        either no paper spells that person differently, or the spelling they do
+        use is itself listed as a variant. `tests/test_display_names.py` checks
+        every row, since a row that fails it splits the person in two instead of
+        merging them.
+        """
+        name = relabel(name)
         if not merge_map:
             return name
-        return relabel(merge_map.get(name)
-                       or (normalize_name and merge_map.get(normalize_name(name)))
-                       or name)
+        return (merge_map.get(name)
+                or (normalize_name and merge_map.get(normalize_name(name)))
+                or name)
 
     papers = []
     for fm, body in parsed:
