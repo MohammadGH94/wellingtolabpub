@@ -46,6 +46,9 @@ What you can do with it:
   link out to UBC cIRcle).
 - **Toggle light/dark** with the button in the corner; it follows your system theme by default.
 
+On a phone the stat tiles go three-up, the controls pair off, and the chart resizes so the whole
+1989–2026 span fits without scrolling sideways.
+
 ### Map
 
 The network view — the same thing Obsidian's graph view shows for `vault/`, but without needing
@@ -59,6 +62,11 @@ Obsidian. Two modes:
 Drag to pan, scroll to zoom, drag a node to pull it out of the tangle, hover for counts, and click
 any node to jump back to the Dashboard with its papers already filtered. The search box finds and
 centres a node. "Re-layout" reshuffles the starting positions, which sometimes untangles a knot.
+
+**On a touch device** the same gestures work: drag to pan, **pinch to zoom**, drag a node to move
+it. Since there is no hover, tapping a node inspects it — pinning it and showing its counts — and
+tapping the same node again opens its papers. Choosing Map also scrolls the canvas into view, which
+would otherwise sit below the header and controls.
 
 **Two thresholds control what you see**, and both exist because the raw graph is unreadable:
 
