@@ -155,10 +155,38 @@
     .prov { font-size: 11.5px !important; margin-top: 8px !important; }
     .views { margin: 16px 0 4px; }
     .card { padding: 14px; }
+
+    /* iOS Safari zooms the whole page when a focused field is under 16px.
+       This is the only reason for the size bump — it is not a design choice. */
+    input[type="search"], select { font-size: 16px; }
+
+    /* Coarse pointers need ~44px targets; these were 34–37px, and the
+       open-access checkbox was 13px. */
+    .views button, .tab, .btn, .more button, .theme-btn { min-height: 44px; }
+    input[type="search"], select { min-height: 44px; }
+    label.chk { min-height: 44px; font-size: 15px; }
+    label.chk input { width: 20px; height: 20px; }
+
+    /* Six tiles stacked 2-up cost 283px before anything useful; three
+       narrower columns halve that. */
+    .tiles { grid-template-columns: repeat(3, 1fr); gap: 7px; margin: 16px 0; }
+    .tile { padding: 9px 10px; }
+    .tile .v { font-size: 17px; }
+    .tile .v.sm { font-size: 12px; }
+    .tile .l { font-size: 10px; line-height: 1.3; }
+
+    /* Same 2-up treatment as the map's controls. */
+    #view-dashboard .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    #view-dashboard .controls > * { min-width: 0; width: 100%; }
+    #view-dashboard #q { grid-column: 1 / -1; }
+    /* search full width, then role|sort, then the filter toggle beside its count */
+    #view-dashboard .count { margin-left: 0; text-align: right; align-self: center; }
     /* Size so the canvas ends inside the viewport on a typical phone rather
        than trailing off the bottom; min-height keeps it usable on short ones,
        where some scrolling is unavoidable. */
-    #map { height: min(46vh, calc(100vh - 495px)); min-height: 300px; }
+    /* Sized against the space left once the card is scrolled to the top of the
+       viewport (see setView), not against the whole page. */
+    #map { height: min(46vh, calc(100vh - 245px)); min-height: 260px; }
     #view-map .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     #view-map .controls > * { min-width: 0; width: 100%; }
     #view-map #mapMode { grid-column: 1 / -1; }   /* mode, then min|weight, then search|re-layout */
@@ -294,11 +322,18 @@ for (let y = yMin; y <= yMax; y++) allYears.push(y);
 const maxN = Math.max(...Object.values(byYear));
 
 function drawChart() {
-  const barW = 13, gap = 2, padL = 30, padR = 8, padT = 10, h = 150, padB = 26;
+  const gap = 2, padL = 30, padR = 8, padT = 10, padB = 26;
+  // Derive bar width from the space actually available, so on a phone the whole
+  // 1989–2026 span fits instead of demanding a sideways scroll to read. Falls
+  // back to the roomy 13px once there is width for it.
+  const avail = (el("chart").parentElement.clientWidth || 900) - padL - padR;
+  const barW = Math.max(4, Math.min(13, Math.floor(avail / allYears.length) - gap));
+  const h = barW < 8 ? 120 : 150;
   const w = padL + allYears.length * (barW + gap) + padR;
   const plotH = h - padT - padB;
   const yScale = n => plotH - (n / maxN) * plotH;
-  let s = `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">`;
+  let s = `<svg id="chart" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" `
+        + `role="img" aria-label="Bar chart of publications per year">`;
   // recessive gridlines + value ticks
   const steps = [0, Math.round(maxN / 2), maxN];
   steps.forEach(n => {
@@ -317,7 +352,6 @@ function drawChart() {
     if (y % 5 === 0) s += `<text class="tick" x="${x + barW / 2}" y="${h - 8}" text-anchor="middle">${y}</text>`;
   });
   el("chart").outerHTML = s + "</svg>";
-  el("chart") || document.querySelector("svg").setAttribute("id", "chart");
   bindChart();
 }
 function bindChart() {
@@ -805,7 +839,9 @@ function nodeAt(sx, sy) {
     const p = local(e);
     const hit = nodeAt(p.x, p.y);
     moved = false;
-    if (hit) { M.drag = hit; M.autofit = false; M.temp = Math.max(M.temp, 6); }
+    // Grab the node but do NOT reheat yet — a plain tap would otherwise nudge
+    // the layout, and a second tap aimed at the same spot can miss.
+    if (hit) { M.drag = hit; M.autofit = false; }
     else { panning = true; M.autofit = false; cv.classList.add("grabbing"); }
     lastX = e.clientX; lastY = e.clientY;
   });
@@ -827,7 +863,10 @@ function nodeAt(sx, sy) {
     }
 
     if (M.drag) {
-      if (Math.abs(e.clientX - lastX) + Math.abs(e.clientY - lastY) > TAP_SLOP) moved = true;
+      if (Math.abs(e.clientX - lastX) + Math.abs(e.clientY - lastY) > TAP_SLOP) {
+        moved = true;
+        M.temp = Math.max(M.temp, 6);   // reheat only once it is a real drag
+      }
       M.drag.x += (e.clientX - lastX) / M.scale;
       M.drag.y += (e.clientY - lastY) / M.scale;
       lastX = e.clientX; lastY = e.clientY;
@@ -919,6 +958,8 @@ function nodeAt(sx, sy) {
 
   // The legend describes whichever input the device actually has.
   if (matchMedia("(hover: none)").matches) {
+    // No keyboard on a phone, so stop advertising the "/" shortcut.
+    el("q").placeholder = "Search publications, people, topics…";
     // Must target the hint by id: ".map-legend span:last-child" also matches
     // the nested #mapNodeKind span, and would rewrite "person" instead.
     const hint = el("mapHint");
@@ -969,6 +1010,13 @@ function setView(v) {
   if (v === "map") {
     if (!M.built) { M.built = true; fillSelects(); buildGraph(); }
     startLoop();
+    // On a phone the header and controls sit above the canvas, so tapping Map
+    // would otherwise leave the graph below the fold. Asking for the map is a
+    // clear enough signal to bring it into view.
+    if (matchMedia("(max-width: 640px)").matches) {
+      requestAnimationFrame(() =>
+        el("view-map").scrollIntoView({ behavior: "smooth", block: "start" }));
+    }
   } else {
     stopLoop();
     el("tip").style.opacity = 0;
@@ -978,7 +1026,14 @@ el("views").addEventListener("click", e => {
   const b = e.target.closest("button[data-view]");
   if (b) setView(b.dataset.view);
 });
-addEventListener("resize", () => { if (!el("view-map").hidden) draw(); });
+let resizeT = null;
+addEventListener("resize", () => {
+  if (!el("view-map").hidden) draw();
+  // The chart's bar width is derived from the container, so a rotation or a
+  // window resize has to redraw it.
+  clearTimeout(resizeT);
+  resizeT = setTimeout(() => { if (!el("view-dashboard").hidden) drawChart(); }, 150);
+});
 
 drawChart();
 render();

@@ -61,6 +61,13 @@ def parse_note(path: str) -> tuple[dict, str]:
     The frontmatter is emitted by `wellington_vault.util.yaml_emit`, so it is a
     known-narrow subset of YAML: scalars and `- item` lists, no nesting. That
     lets us parse it without a YAML dependency.
+
+    A key with nothing after the colon is either an empty scalar (`venue:` on a
+    paper with no journal) or the header of a `- item` list on the lines below.
+    It must stay an empty *string* until an item actually appears: an empty list
+    survives into the page's JSON as `[]`, which is truthy in JavaScript, so
+    `if (p.venue)` passes and renders nothing — a stray separator, or an `<a>`
+    pointing at an empty href.
     """
     text = open(path, encoding="utf-8").read()
     m = re.match(r"---\n(.*?)\n---\n", text, re.S)
@@ -71,17 +78,15 @@ def parse_note(path: str) -> tuple[dict, str]:
     for line in m.group(1).splitlines():
         if re.match(r"^\s*-\s", line) and key:
             value = line.strip()[2:].strip().strip('"')
-            if isinstance(data.get(key), list):
-                data[key].append(value)
-            else:
-                data[key] = [value]
+            if not isinstance(data.get(key), list):
+                data[key] = []          # first item promotes the key to a list
+            data[key].append(value)
         else:
             k, sep, v = line.partition(":")
             if not sep:
                 continue
             key = k.strip()
-            v = v.strip().strip('"')
-            data[key] = v if v else []
+            data[key] = v.strip().strip('"')
     return data, text[m.end():]
 
 
