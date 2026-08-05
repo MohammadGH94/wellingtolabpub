@@ -138,7 +138,32 @@
 
   /* map */
   .map-wrap { position: relative; }
-  #map { display: block; width: 100%; height: 560px; border-radius: 8px; cursor: grab; touch-action: none; }
+  /* touch-action: none means the browser hands us every gesture, including
+     pinch — the pointer handlers implement pan/zoom themselves. */
+  #map { display: block; width: 100%; height: 560px; border-radius: 8px; cursor: grab;
+         touch-action: none; -webkit-user-select: none; user-select: none; }
+  /* On a phone the header and the five stacked control rows pushed the canvas
+     ~640px down the page — the map was entirely below the fold on open. Tighten
+     the chrome and lay the controls out 2-up so the graph is visible on arrival. */
+  @media (max-width: 640px) {
+    .wrap { padding: 20px 14px 60px; }
+    /* The h1 wraps to two lines at this width and ran underneath the
+       absolutely-positioned theme button; keep it clear of it. */
+    header h1 { font-size: 21px; padding-right: 76px; }
+    header p { font-size: 13px; }
+    .theme-btn { top: 18px; right: 14px; }
+    .prov { font-size: 11.5px !important; margin-top: 8px !important; }
+    .views { margin: 16px 0 4px; }
+    .card { padding: 14px; }
+    /* Size so the canvas ends inside the viewport on a typical phone rather
+       than trailing off the bottom; min-height keeps it usable on short ones,
+       where some scrolling is unavoidable. */
+    #map { height: min(46vh, calc(100vh - 495px)); min-height: 300px; }
+    #view-map .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    #view-map .controls > * { min-width: 0; width: 100%; }
+    #view-map #mapMode { grid-column: 1 / -1; }   /* mode, then min|weight, then search|re-layout */
+    .map-legend { gap: 8px; }
+  }
   #map.grabbing { cursor: grabbing; }
   .map-legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin-top: 12px; }
   .map-legend .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--series-1); margin-right: 5px; vertical-align: middle; }
@@ -223,7 +248,7 @@
     <div class="map-legend">
       <span><span class="swatch"></span>one <span id="mapNodeKind">person</span> — bigger means more papers</span>
       <span><span class="line"></span>published together — thicker means more shared papers</span>
-      <span>drag to pan · scroll to zoom · click a node to see its papers</span>
+      <span id="mapHint">drag to pan · scroll to zoom · click a node to see its papers</span>
     </div>
     <p class="map-note" id="mapMethod"></p>
   </section>
@@ -722,68 +747,184 @@ function nodeAt(sx, sy) {
 }
 
 /* map interaction */
+/* Pointer Events rather than mouse events, so one code path covers mouse, touch
+   and pen. The canvas sets `touch-action: none`, which means the browser will
+   not pan or pinch it for us — every gesture has to be handled here, including
+   two-finger zoom. */
 (function bindMap() {
   const cv = el("map"), tip = el("tip");
+  const pts = new Map();                 // active pointerId -> {x, y} in client coords
   let panning = false, lastX = 0, lastY = 0, moved = false;
+  let lastPointerType = "mouse";
+  let pinch = null;                      // baseline captured when the 2nd finger lands
+  let lastTapped = null;                 // for tap-to-inspect, tap-again-to-open
+  const TAP_SLOP = 8;                    // touch is jittery; a few px is still a tap
 
-  cv.addEventListener("mousedown", e => {
+  const local = e => {
     const r = cv.getBoundingClientRect();
-    const hit = nodeAt(e.clientX - r.left, e.clientY - r.top);
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  };
+  const twoPoints = () => [...pts.values()];
+  const spread = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const centre = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
+  function showTip(node, clientX, clientY) {
+    const links = M.edges.filter(x => x.a === node || x.b === node).length;
+    tip.innerHTML = `<b>${esc(node.n)}</b><br>${node.p} paper${node.p === 1 ? "" : "s"} · `
+      + `${links} link${links === 1 ? "" : "s"}`;
+    tip.style.opacity = 1;
+    tip.style.left = Math.max(8, Math.min(clientX + 14, innerWidth - 200)) + "px";
+    tip.style.top = Math.max(8, clientY - 52) + "px";
+  }
+
+  function startPinch() {
+    const [a, b] = twoPoints();
+    const r = cv.getBoundingClientRect();
+    const m = centre(a, b);
+    pinch = {
+      d0: spread(a, b) || 1,
+      s0: M.scale,
+      // Anchor in world space, so the point between the fingers stays put.
+      wx: (m.x - r.left - M.ox) / M.scale,
+      wy: (m.y - r.top - M.oy) / M.scale,
+    };
+    M.autofit = false;
+    M.drag = null;                       // a second finger cancels a node drag
+    panning = false;
+    cv.classList.remove("grabbing");
+  }
+
+  cv.addEventListener("pointerdown", e => {
+    lastPointerType = e.pointerType;
+    cv.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pts.size === 2) { startPinch(); return; }
+    if (pts.size > 2) return;
+
+    const p = local(e);
+    const hit = nodeAt(p.x, p.y);
     moved = false;
     if (hit) { M.drag = hit; M.autofit = false; M.temp = Math.max(M.temp, 6); }
     else { panning = true; M.autofit = false; cv.classList.add("grabbing"); }
     lastX = e.clientX; lastY = e.clientY;
   });
-  window.addEventListener("mousemove", e => {
-    const r = cv.getBoundingClientRect();
-    if (M.drag) {
+
+  cv.addEventListener("pointermove", e => {
+    if (pts.has(e.pointerId)) pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pinch && pts.size >= 2) {
+      const [a, b] = twoPoints();
+      const r = cv.getBoundingClientRect();
+      const m = centre(a, b);
+      const ns = Math.max(0.25, Math.min(4, pinch.s0 * (spread(a, b) / pinch.d0)));
+      M.scale = ns;
+      M.ox = (m.x - r.left) - pinch.wx * ns;
+      M.oy = (m.y - r.top) - pinch.wy * ns;
       moved = true;
+      draw();
+      return;
+    }
+
+    if (M.drag) {
+      if (Math.abs(e.clientX - lastX) + Math.abs(e.clientY - lastY) > TAP_SLOP) moved = true;
       M.drag.x += (e.clientX - lastX) / M.scale;
       M.drag.y += (e.clientY - lastY) / M.scale;
-      M.drag.vx = 0; M.drag.vy = 0;
       lastX = e.clientX; lastY = e.clientY;
       return;
     }
     if (panning) {
-      moved = true;
+      if (Math.abs(e.clientX - lastX) + Math.abs(e.clientY - lastY) > TAP_SLOP) moved = true;
       M.ox += e.clientX - lastX; M.oy += e.clientY - lastY;
       lastX = e.clientX; lastY = e.clientY;
+      draw();
       return;
     }
-    if (el("view-map").hidden) return;
-    const inside = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
-    const hit = inside ? nodeAt(e.clientX - r.left, e.clientY - r.top) : null;
+
+    // Hover is a mouse-only affordance; touch has no equivalent, so tap does
+    // the inspecting instead (see pointerup).
+    if (e.pointerType !== "mouse" || el("view-map").hidden) return;
+    const p = local(e);
+    const hit = nodeAt(p.x, p.y);
     M.hover = hit;
-    if (hit) {
-      const links = M.edges.filter(x => x.a === hit || x.b === hit).length;
-      tip.innerHTML = `<b>${esc(hit.n)}</b><br>${hit.p} paper${hit.p === 1 ? "" : "s"} · `
-        + `${links} link${links === 1 ? "" : "s"}`;
-      tip.style.opacity = 1;
-      tip.style.left = Math.min(e.clientX + 14, innerWidth - 200) + "px";
-      tip.style.top = (e.clientY - 46) + "px";
-    } else if (tip.style.opacity !== "0") { tip.style.opacity = 0; }
+    if (hit) showTip(hit, e.clientX, e.clientY);
+    else if (tip.style.opacity !== "0") tip.style.opacity = 0;
   });
-  window.addEventListener("mouseup", e => {
-    if (M.drag && !moved) openFromMap(M.drag);
-    else if (panning && !moved) {
-      const r = cv.getBoundingClientRect();
-      const hit = nodeAt(e.clientX - r.left, e.clientY - r.top);
-      if (!hit) M.pinned = null;
+
+  function endPointer(e) {
+    const wasPinching = !!pinch;
+    pts.delete(e.pointerId);
+    if (pts.size < 2) pinch = null;
+    if (pts.size === 1) {
+      // Lifting one finger of a pinch: re-baseline so panning does not jump.
+      const [only] = twoPoints();
+      lastX = only.x; lastY = only.y;
+      panning = true; moved = true;
+      return;
+    }
+    if (pts.size > 0) return;
+
+    const p = local(e);
+    const hit = nodeAt(p.x, p.y);
+    if (!moved && !wasPinching) {
+      if (e.pointerType === "mouse") {
+        if (hit) openFromMap(hit); else M.pinned = null;
+      } else if (hit) {
+        // Touch: first tap inspects (pins + shows the label and neighbourhood),
+        // second tap on the same node opens it. Without this, there is no way
+        // to find out who a node is without navigating away from the map.
+        if (lastTapped === hit) { lastTapped = null; openFromMap(hit); }
+        else { lastTapped = hit; M.pinned = hit; showTip(hit, e.clientX, e.clientY); }
+      } else {
+        lastTapped = null; M.pinned = null; tip.style.opacity = 0;
+      }
     }
     M.drag = null; panning = false; cv.classList.remove("grabbing");
+    draw();
+  }
+  cv.addEventListener("pointerup", endPointer);
+  // Suppress the compatibility mouse events a browser synthesises after a
+  // touch. Without this, the "ghost click" fired ~300ms after tapping a node
+  // lands on whatever is under the finger *by then* — and since opening a node
+  // swaps in the dashboard, that was a chart bar, silently applying a year
+  // filter the user never chose.
+  cv.addEventListener("touchend", e => { if (e.cancelable) e.preventDefault(); },
+                      { passive: false });
+  cv.addEventListener("pointercancel", e => {
+    pts.delete(e.pointerId);
+    if (pts.size < 2) pinch = null;
+    if (pts.size === 0) { M.drag = null; panning = false; cv.classList.remove("grabbing"); }
   });
+
   cv.addEventListener("wheel", e => {
     e.preventDefault();
     M.autofit = false;
-    const r = cv.getBoundingClientRect();
-    const mx = e.clientX - r.left, my = e.clientY - r.top;
-    const k = Math.exp(-e.deltaY * 0.0016);
+    const p = local(e);
+    // Trackpad and mouse-wheel zoom; browsers also send ctrlKey wheel events
+    // for a trackpad pinch, which lands here too.
+    const k = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0016));
     const ns = Math.max(0.25, Math.min(4, M.scale * k));
-    M.ox = mx - (mx - M.ox) * (ns / M.scale);
-    M.oy = my - (my - M.oy) * (ns / M.scale);
+    M.ox = p.x - (p.x - M.ox) * (ns / M.scale);
+    M.oy = p.y - (p.y - M.oy) * (ns / M.scale);
     M.scale = ns;
+    draw();
   }, { passive: false });
-  cv.addEventListener("mouseleave", () => { tip.style.opacity = 0; });
+
+  // Only a real mouse leaving should dismiss the tooltip. A touch tap also
+  // synthesises mouseover/mouseout, which would wipe the panel the tap just
+  // opened.
+  cv.addEventListener("mouseleave", () => {
+    if (lastPointerType === "mouse") tip.style.opacity = 0;
+  });
+
+  // The legend describes whichever input the device actually has.
+  if (matchMedia("(hover: none)").matches) {
+    // Must target the hint by id: ".map-legend span:last-child" also matches
+    // the nested #mapNodeKind span, and would rewrite "person" instead.
+    const hint = el("mapHint");
+    if (hint) hint.textContent =
+      "drag to pan · pinch to zoom · tap a node for details, tap again for its papers";
+  }
 })();
 
 function openFromMap(node) {
