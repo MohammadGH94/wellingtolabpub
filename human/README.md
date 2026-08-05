@@ -45,7 +45,8 @@ What you can do with it:
 - **Switch tabs** to browse the ~1,600 co-authors, 684 research topics, or the trainee theses (which
   link out to UBC cIRcle).
 - **Toggle light/dark** with the button in the corner; it follows your system theme by default.
-- **Include or exclude conference abstracts** with the checkbox beside the view switcher.
+- **Include or exclude non-papers** (conference abstracts, supplementary files) with the
+  checkbox beside the view switcher.
 
 On a phone the stat tiles go three-up, the controls pair off, and the chart resizes so the whole
 1989–2026 span fits without scrolling sideways.
@@ -160,25 +161,42 @@ a schedule if people are going to cite what they see.
 
 ---
 
-## Conference abstracts
+## What counts as a publication
 
-Roughly one record in eight is a **conference abstract** — a meeting submission, not a
-peer-reviewed paper. They inflate the publication count while contributing almost nothing to any
-measure of impact: the 37 in this record hold **6 citations between them**, against ~17,900 for the
-rest. So the browser **excludes them by default**, and the checkbox beside the view switcher puts
-them back. The toggle moves everything at once — totals, chart, people, topics and both graphs —
-so no two views can disagree.
+**A quarter of the records are not papers.** Of 306 records, 226 are peer-reviewed papers; the
+other 80 are 63 conference abstracts, 11 supplementary files deposited beside a paper, and 6
+editorial or peer-review artefacts (a journal's "HotSpots" news column, a preface, an eLife author
+response). Between them those 80 hold **13 citations**, against 17,921 for the papers — they inflate
+the publication count and almost nothing else.
 
-OpenAlex types these as ordinary articles, so there is no field to read. They are identified from
-the title: the session code most of them carry (`P4-218:`, `O1-03-07`, `S3-02-03:`, `IC-P1`,
-`Abstract 245:`, `0404 `), or an all-capitals title — but never for a preprint, where shouty titles
-are just a house style.
+So the browser counts **papers only by default**, and the checkbox beside the view switcher includes
+everything. The toggle moves totals, chart, people, topics and both graphs together, so no two views
+can disagree. With everything shown, each non-paper row is labelled with what it is.
 
-**The detection is deliberately conservative**, because wrongly hiding a real paper is worse than
-leaving an abstract in view. It under-catches: an abstract published in a supplement without a
-session code in its title is indistinguishable here from a short paper and stays counted. Nothing
-currently flagged has more than two citations, which is the check worth re-running if the rules
-change — see `is_abstract()` in `build_human.py`.
+### How they are identified
+
+OpenAlex types nearly all of them as ordinary articles, so there is no field to read. The evidence
+is in the DOI, the venue and the title:
+
+| Signal | Example |
+|---|---|
+| Supplement DOI | `10.1002/alz.047179` — an Alzheimer's & Dementia supplement; a real article there is `alz.12157` |
+| | `10.1002/alz70856_102379` (its 2025 form), `10.1136/bjsports-2023-concussion.207`, `10.1182/blood-2023-178867`, `10.58530/…` (ISMRM), `…05201s416` |
+| Session code in title | `P4-218:`, `O1-03-07`, `S3-02-03:`, `IC-P1`, `Abstract 245:`, `2.16 `, `73 (13B) ` |
+| All-capitals title | how several proceedings render them — but never for a preprint, where it is just house style |
+| Figshare DOI / "Additional file" | `10.6084/m9.figshare.…` |
+
+**The rules are deliberately conservative**, because wrongly demoting a real paper is worse than
+leaving an abstract in the count. Nothing demoted has more than **two** citations, while the papers
+kept have a median of 30 — that is the check worth re-running if the rules change. It still
+under-catches: an abstract published in a supplement with no session code and an ordinary DOI is
+indistinguishable here from a short paper.
+
+**Preprints are counted as papers.** The 17 bioRxiv/medRxiv/Research Square/SSRN records are
+genuine outputs, but several duplicate a journal version that is also in the list — so the
+paper count is still slightly generous. Say the word if you would rather they were separated too.
+
+See `record_kind()` in `build_human.py`.
 
 ---
 
