@@ -1,0 +1,57 @@
+name: Update Now
+
+# The "Update Now" button: Actions tab -> "Update Now" -> "Run workflow".
+# Re-fetches the lab's publications from OpenAlex (and theses from UBC cIRcle if
+# the CIRCLE_API_KEY secret is set), rebuilds the vault and human/index.html,
+# and commits the result to the branch it was run on.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mailto:
+        description: Contact email for OpenAlex's polite pool
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-now
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run tests
+        run: python -m unittest discover -s tests
+
+      - name: Rebuild vault
+        env:
+          CIRCLE_API_KEY: ${{ secrets.CIRCLE_API_KEY }}
+          MAILTO: ${{ inputs.mailto || vars.OPENALEX_MAILTO || 'research@example.com' }}
+        # --refresh: the point of the button is fresh data, so skip any cache.
+        run: python -m wellington_vault build --refresh --mailto "$MAILTO"
+
+      - name: Rebuild browser page
+        run: python human/build_human.py
+
+      - name: Commit and push if anything changed
+        run: |
+          git add -A vault human/index.html
+          if git diff --cached --quiet; then
+            echo "Already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update vault from OpenAlex ($(date -u +%F))"
+          git push

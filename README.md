@@ -71,6 +71,14 @@ python -m wellington_vault build --author-id A1234567890
 python -m wellington_vault build --no-merge-map
 ```
 
+### Update Now (one button)
+
+On GitHub: **Actions → Update Now → Run workflow** (the browser page's "Update now"
+button links there). It runs the tests, rebuilds the vault with `--refresh`, regenerates
+`human/index.html`, and commits only if something changed. Optional setup: a
+`CIRCLE_API_KEY` repository secret to include theses, and an `OPENALEX_MAILTO`
+repository variable for OpenAlex's polite pool.
+
 ### Duplicate people
 
 OpenAlex sometimes files one researcher under several author IDs, which would
